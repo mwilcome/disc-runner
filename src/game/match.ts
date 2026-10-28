@@ -1,4 +1,4 @@
-import { MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, clamp, isEndZone, type Vec } from './field';
+import { EZ_LEFT_END, EZ_RIGHT_START, MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, clamp, isEndZone, type Vec } from './field';
 import { flightTime, flightTo, routePoint, routeSpeed, sampleFlight, type Flight, type RouteId, type ThrowKind } from './throw';
 
 export interface Athlete {
@@ -60,7 +60,8 @@ export interface Match {
   userSpeed: number;
   userCatch: number;
   aiWait: number;
-  celebrate: 'goal' | 'turn' | 'half' | 'end' | null;
+  celebrate: 'goal' | 'catch' | 'turn' | 'half' | 'end' | null;
+  markX: number;
   userSquad: 0 | 1 | 2;
   oppSquad: 0 | 1 | 2;
 }
@@ -85,16 +86,17 @@ const FORM: { x: number; y: number; route: RouteId }[] = [
   { x: 372, y: 118, route: 'deep' },
   { x: 78, y: 158, route: 'out' },
 ];
-/** Zone drops. These are not mirrors of the receivers. */
+/** Spaced zones. None of these sit on a receiver or on the thrower's hip. */
 const ZONES: { x: number; y: number }[] = [
-  { x: 170, y: -150 },
-  { x: 340, y: 0 },
-  { x: 80, y: 70 },
-  { x: -36, y: 6 },
-  { x: 250, y: 160 },
-  { x: 460, y: -40 },
-  { x: 20, y: 180 },
+  { x: 140, y: -170 },
+  { x: 400, y: -100 },
+  { x: 130, y: 24 },
+  { x: -220, y: -80 },
+  { x: 300, y: 185 },
+  { x: 500, y: 50 },
+  { x: -30, y: 130 },
 ];
+const SNAP_BEAT = 0.85;
 
 export function attackOf(match: Match): 1 | -1 {
   if (match.poss === 0) return match.userAttack;
@@ -172,6 +174,7 @@ export function createMatch(opts: {
     userCatch: opts.catchLv,
     aiWait: 0,
     celebrate: null,
+    markX: OPEN_X,
     userSquad: opts.userSquad,
     oppSquad: opts.oppSquad,
   };
@@ -206,12 +209,8 @@ export function spot(match: Match, ballX: number): void {
   match.phase = 'ready';
   match.phaseT = 0;
   match.celebrate = null;
-  match.message = 'DRAG TO AIM';
-  if (match.poss === 1) {
-    match.control = 3;
-    match.phase = 'live';
-    match.message = 'DRAG TO RUN';
-  }
+  match.message = match.poss === 0 ? 'SNAP' : 'DEFEND';
+  if (match.poss === 1) match.control = 3;
   syncHeld(match);
 }
 
@@ -254,7 +253,8 @@ export function step(match: Match, dt: number, input: FrameInput): void {
   if (match.phase === 'end') return;
   if (match.phase === 'celebrate') {
     match.phaseT += dt;
-    if (match.phaseT >= 1.35) finishCelebrate(match);
+    const hold = match.celebrate === 'catch' ? 0.9 : match.celebrate === 'goal' ? 1.7 : 2.05;
+    if (match.phaseT >= hold) finishCelebrate(match);
     return;
   }
   const offense = match.poss === 0;
@@ -265,7 +265,14 @@ export function step(match: Match, dt: number, input: FrameInput): void {
   match.routeT += dt;
   if (match.phase === 'ready') {
     match.phaseT += dt;
-  } else if (match.phase === 'live') {
+    if (match.phaseT >= SNAP_BEAT) {
+      match.phase = 'live';
+      if (match.message === 'SNAP' || match.message === 'DEFEND') {
+        match.message = offense ? 'DRAG TO AIM' : 'DRAG TO RUN';
+      }
+    }
+  }
+  if (match.phase === 'live') {
     match.clock -= dt;
     match.liveT += dt;
     if (match.clock <= 0) {
@@ -275,7 +282,7 @@ export function step(match: Match, dt: number, input: FrameInput): void {
   }
   const playInput = offense ? { ...input, moveX: 0, moveY: 0, switchTo: null, lunge: false } : input;
   movePeople(match, dt, playInput);
-  if (!offense && (input.lunge || closeEnoughToLunge(match))) tryLunge(match);
+  if (!offense && input.lunge) tryLunge(match);
   stepLunge(match, dt);
   if (input.flight && canThrow(match)) launch(match, input.flight, match.control);
   else maybeAiThrow(match);
@@ -285,10 +292,6 @@ export function step(match: Match, dt: number, input: FrameInput): void {
     match.stall -= dt;
     if (match.stall <= 0) {
       turnover(match, 'STALL');
-      return;
-    }
-    if (match.liveT > 2.8 && touchedByDefense(match)) {
-      turnover(match, 'BLOCK');
       return;
     }
   } else {
@@ -328,19 +331,21 @@ function movePeople(match: Match, dt: number, input: FrameInput): void {
       continue;
     }
     if (offense) {
-      const dest = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, Math.min(match.routeT, 1.25), routeSpeed(level));
+      const dest = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, routeClock(match.routeT), routeSpeed(level));
       dest.y = clamp(dest.y + Math.sin(match.routeT * 4 + i) * 14, SIDELINE_TOP + 28, SIDELINE_BOT - 28);
       steer(p, dest.x, dest.y, routeSpeed(level), dt);
       continue;
     }
-    let gx = p.homeX + Math.sin(match.routeT * 1.3 + i) * 34;
-    let gy = p.homeY + Math.cos(match.routeT * 1.05 + i * 0.6) * 20;
-    if (match.disc.mode === 'flight') {
-      gx = gx * 0.72 + match.disc.x * 0.28;
-      gy = gy * 0.72 + match.disc.y * 0.28;
-    }
-    steer(p, gx, clamp(gy, SIDELINE_TOP + 28, SIDELINE_BOT - 28), 96, dt);
+    const gx = p.homeX + Math.sin(match.routeT * 0.9 + i) * 26;
+    const gy = p.homeY + Math.cos(match.routeT * 0.7 + i * 0.6) * 18;
+    steer(p, gx, clamp(gy, SIDELINE_TOP + 36, SIDELINE_BOT - 36), 70, dt);
   }
+}
+
+function routeClock(t: number): number {
+  const span = 1.8;
+  const phase = t % (span * 2);
+  return phase <= span ? phase : span * 2 - phase;
 }
 
 function steer(p: Athlete, x: number, y: number, speed: number, dt: number): void {
@@ -357,14 +362,6 @@ function steer(p: Athlete, x: number, y: number, speed: number, dt: number): voi
 function moverSpeed(match: Match, team: 0 | 1): number {
   if (team === 0) return 150 * (1 + 0.22 * match.userSpeed);
   return 142;
-}
-
-function closeEnoughToLunge(match: Match): boolean {
-  if (match.poss !== 1 || match.disc.mode !== 'held') return false;
-  const me = match.players[match.control];
-  const holder = match.players[match.disc.holder];
-  if (!me || !holder || me.lunge > 0) return false;
-  return Math.hypot(me.x - holder.x, me.y - holder.y) < 42;
 }
 
 function tryLunge(match: Match): void {
@@ -428,11 +425,17 @@ function stepFlight(match: Match, dt: number): void {
   const off = nearest(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
   const def = nearest(match, sample, (p) => p.team !== match.poss);
   const over = sample.z > (match.disc.kind === 'floater' ? 1.05 : 0.7);
-  if (!over && def.index >= 0 && def.dist <= 22 && def.dist + 2 < off.dist) {
+  const offIn = off.index >= 0 && off.dist <= match.disc.catchRadius && sample.z <= 1.15;
+  const defIn = !over && def.index >= 0 && def.dist <= 24;
+  if (offIn && defIn && def.dist < off.dist + 8) {
+    turnover(match, 'TIP');
+    return;
+  }
+  if (defIn && def.dist + 2 < off.dist) {
     turnover(match, 'BLOCK');
     return;
   }
-  if (off.index >= 0 && off.dist <= match.disc.catchRadius && sample.z <= 1.15) {
+  if (offIn) {
     catchDisc(match, off.index, sample.x);
     return;
   }
@@ -467,8 +470,8 @@ function catchDisc(match: Match, index: number, x: number): void {
   }
   match.routeT = 0;
   if (catcher.team === 0) match.control = index;
-  match.message = catcher.team === 0 ? 'DRAG TO AIM' : 'DRAG TO RUN';
   syncHeld(match);
+  celebrate(match, 'catch', 'CATCH');
 }
 
 function nearest(
@@ -489,23 +492,17 @@ function nearest(
   return { index, dist };
 }
 
-function touchedByDefense(match: Match): boolean {
-  const holder = match.players[match.disc.holder];
-  if (!holder) return false;
-  return match.players.some(
-    (p) => p.team !== match.poss && Math.hypot(p.x - holder.x, p.y - holder.y) < 16,
-  );
-}
-
 function turnover(match: Match, message: string): void {
+  match.markX = match.disc.x;
   celebrate(match, 'turn', message);
 }
 
-function celebrate(match: Match, kind: 'goal' | 'turn' | 'half' | 'end', message: string): void {
+function celebrate(match: Match, kind: 'goal' | 'catch' | 'turn' | 'half' | 'end', message: string): void {
   match.phase = 'celebrate';
   match.celebrate = kind;
   match.phaseT = 0;
   match.message = message;
+  match.markX = match.disc.x;
   if (kind === 'goal') match.score[match.poss] += 1;
 }
 
@@ -522,11 +519,28 @@ function finishCelebrate(match: Match): void {
     spot(match, attackOf(match) === 1 ? 1500 : 2800);
     return;
   }
+  if (match.celebrate === 'catch') {
+    match.phase = 'live';
+    match.celebrate = null;
+    match.phaseT = 0;
+    match.stall = 8;
+    match.liveT = 0;
+    match.message = match.poss === 0 ? 'DRAG TO AIM' : 'DRAG TO RUN';
+    return;
+  }
   if (match.celebrate === 'goal' || match.celebrate === 'turn') {
+    const landed = match.markX;
     match.poss = match.poss === 0 ? 1 : 0;
     const dir = attackOf(match);
-    spot(match, dir === 1 ? 1560 : 2860);
+    const restart = match.celebrate === 'goal' ? (dir > 0 ? 1500 : 2700) : landed;
+    spot(match, placeSpot(dir, restart));
   }
+}
+
+function placeSpot(dir: 1 | -1, x: number): number {
+  const lo = dir > 0 ? EZ_LEFT_END + 100 : EZ_LEFT_END + 80;
+  const hi = dir > 0 ? EZ_RIGHT_START - 80 : EZ_RIGHT_START - 140;
+  return clamp(x, Math.min(lo, hi), Math.max(lo, hi));
 }
 
 function onClock(match: Match): void {

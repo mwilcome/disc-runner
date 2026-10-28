@@ -37,9 +37,11 @@ describe('slingshot and catch', () => {
     for (let i = 0; i < 130; i += 1) step(match, 1 / 60, idle);
     expect(match.message).toBe('INCOMPLETE');
     expect(match.phase).toBe('celebrate');
-    for (let i = 0; i < 90; i += 1) step(match, 1 / 60, idle);
+    const landed = match.disc.x;
+    for (let i = 0; i < 140; i += 1) step(match, 1 / 60, idle);
     expect(match.poss).toBe(1);
     expect(match.disc.mode).toBe('held');
+    expect(Math.abs(match.disc.x - landed)).toBeLessThan(280);
   });
 
   it('completes when a receiver is inside the catch radius', () => {
@@ -123,7 +125,14 @@ describe('roles and coverage', () => {
         closest = Math.min(closest, Math.hypot(def.x - off.x, def.y - off.y));
       }
     }
-    expect(closest).toBeGreaterThan(48);
+    expect(closest).toBeGreaterThan(80);
+    const thrower = match.players[match.disc.holder]!;
+    let rush = Infinity;
+    for (let d = 7; d < 14; d += 1) {
+      const def = match.players[d]!;
+      rush = Math.min(rush, Math.hypot(def.x - thrower.x, def.y - thrower.y));
+    }
+    expect(rush).toBeGreaterThan(110);
   });
 });
 

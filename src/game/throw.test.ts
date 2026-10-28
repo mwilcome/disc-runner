@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EZ_RIGHT_START, OPEN_X, isEndZone } from './field';
-import { assistFlight, dragToThrow, flightTime, flightTo, releaseSpeed, routePoint, routeSpeed, sampleFlight } from './throw';
+import { assistFlight, dragToThrow, flightFromPlan, flightTime, flightTo, landingOf, releaseSpeed, routePoint, routeSpeed, sampleFlight } from './throw';
 
 describe('dragToThrow', () => {
   it('flies opposite the drag', () => {
@@ -9,10 +9,10 @@ describe('dragToThrow', () => {
     expect(plan?.kind).toBe('floater');
   });
 
-  it('calls a fast drag a flick', () => {
+  it('calls a fast release a flick and ignores a short pull', () => {
     expect(dragToThrow({ dx: -80, dy: 10, durationMs: 400, releaseSpeed: 1.1 })?.kind).toBe('flick');
-    expect(dragToThrow({ dx: -80, dy: 0, durationMs: 120, releaseSpeed: 0.1 })?.kind).toBe('flick');
-    expect(dragToThrow({ dx: 4, dy: 4, durationMs: 40, releaseSpeed: 2 })).toBeNull();
+    expect(dragToThrow({ dx: -80, dy: 0, durationMs: 120, releaseSpeed: 0.1 })?.kind).toBe('floater');
+    expect(dragToThrow({ dx: 8, dy: 4, durationMs: 40, releaseSpeed: 2 })).toBeNull();
   });
 });
 
@@ -64,5 +64,17 @@ describe('routes and flight', () => {
     expect(flight.aim.y).toBeCloseTo(0, 5);
     const at = sampleFlight(flight, flight.hang);
     expect(Math.abs(at.y - lead.y)).toBeGreaterThan(40);
+    expect(landingOf(flight).x).toBeCloseTo(at.x, 4);
+    expect(landingOf(flight).y).toBeCloseTo(at.y, 4);
+  });
+
+  it('puts the crosshair on the same spot the disc reaches', () => {
+    const plan = dragToThrow({ dx: -90, dy: 30, durationMs: 360, releaseSpeed: 0.2 })!;
+    const flight = flightFromPlan({ x: 40, y: 80 }, plan, 0);
+    const land = landingOf(flight);
+    const at = sampleFlight(flight, flight.hang);
+    expect(at.x).toBeCloseTo(land.x, 4);
+    expect(at.y).toBeCloseTo(land.y, 4);
+    expect(at.z).toBe(0);
   });
 });

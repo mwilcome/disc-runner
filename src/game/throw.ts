@@ -32,10 +32,9 @@ export interface Flight {
   catchRadius: number;
 }
 
-const MIN_DRAG = 24;
-const FULL_DRAG = 120;
-const FLICK_SPEED = 0.7;
-const FLICK_MS = 170;
+export const MIN_PULL = 28;
+const FULL_DRAG = 130;
+const FLICK_SPEED = 0.85;
 
 export function flightTime(kind: ThrowKind): number {
   return kind === 'flick' ? 0.52 : 1.15;
@@ -60,17 +59,21 @@ export function releaseSpeed(samples: DragSample[], windowMs = 90): number {
   return Math.hypot(last.x - first.x, last.y - first.y) / dt;
 }
 
-/** Drag-opposite throw. A fast or very short drag is a flick. */
+/** 0 at a short pull, 1 at a full pull, smooth in between. */
+export function pullPower(length: number): number {
+  const t = clamp((length - MIN_PULL) / (FULL_DRAG - MIN_PULL), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/** Drag-opposite throw. A fast release is a flick. A short pull does not throw. */
 export function dragToThrow(drag: DragGesture): ThrowPlan | null {
   const length = Math.hypot(drag.dx, drag.dy);
-  if (length < MIN_DRAG) return null;
-  const power = clamp((length - MIN_DRAG) / (FULL_DRAG - MIN_DRAG), 0, 1);
-  const kind: ThrowKind =
-    drag.releaseSpeed >= FLICK_SPEED || drag.durationMs <= FLICK_MS ? 'flick' : 'floater';
+  if (length < MIN_PULL) return null;
+  const kind: ThrowKind = drag.releaseSpeed >= FLICK_SPEED ? 'flick' : 'floater';
   return {
     kind,
     aim: { x: -drag.dx / length, y: -drag.dy / length },
-    power,
+    power: pullPower(length),
   };
 }
 
