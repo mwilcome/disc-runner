@@ -36,9 +36,11 @@ describe('routes and flight', () => {
     expect(isEndZone(lead.x, 1)).toBe(true);
     expect(lead.x).toBeGreaterThan(EZ_RIGHT_START);
     const flight = flightTo({ x: OPEN_X - 52, y: 300 }, lead, 'floater', 0);
-    const at = sampleFlight(flight, flightTime('floater'));
-    expect(at.x).toBeCloseTo(lead.x, 1);
-    expect(at.z).toBeGreaterThan(0.4);
+    const mid = sampleFlight(flight, flight.hang * 0.5);
+    const at = sampleFlight(flight, flight.hang);
+    expect(mid.z).toBeGreaterThan(0.4);
+    expect(at.x).toBeCloseTo(lead.x, 0);
+    expect(at.z).toBe(0);
     expect(flight.maxZ).toBeGreaterThan(1);
   });
 
@@ -53,16 +55,14 @@ describe('routes and flight', () => {
     );
   });
 
-  it('locks a floater aimed near a receiver and leaves a sideways flick alone', () => {
+  it('keeps a slingshot on the drag even when a receiver is nearby', () => {
     const origin = { x: 0, y: 0 };
-    const lead = { x: 200, y: 40 };
-    const toward = dragToThrow({ dx: -200, dy: -30, durationMs: 400, releaseSpeed: 0.1 })!;
-    const locked = assistFlight(origin, toward, [lead], 0);
-    expect(locked.aim.y).toBeGreaterThan(0);
-    const at = sampleFlight(locked, flightTime('floater'));
-    expect(at.x).toBeCloseTo(lead.x, 0);
-    const flick = dragToThrow({ dx: 0, dy: -80, durationMs: 100, releaseSpeed: 1 })!;
-    const raw = assistFlight(origin, flick, [lead], 0);
-    expect(Math.abs(raw.aim.x)).toBeLessThan(0.2);
+    const lead = { x: 200, y: 80 };
+    const toward = dragToThrow({ dx: -200, dy: 0, durationMs: 400, releaseSpeed: 0.1 })!;
+    const flight = assistFlight(origin, toward, [lead], 0);
+    expect(flight.aim.x).toBeCloseTo(1, 5);
+    expect(flight.aim.y).toBeCloseTo(0, 5);
+    const at = sampleFlight(flight, flight.hang);
+    expect(Math.abs(at.y - lead.y)).toBeGreaterThan(40);
   });
 });

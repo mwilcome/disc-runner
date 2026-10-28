@@ -1,5 +1,5 @@
 import { MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, clamp, isEndZone, type Vec } from './field';
-import { flightTime, flightTo, routeSpeed, sampleFlight, type Flight, type RouteId, type ThrowKind } from './throw';
+import { flightTime, flightTo, routePoint, routeSpeed, sampleFlight, type Flight, type RouteId, type ThrowKind } from './throw';
 
 export interface Athlete {
   team: 0 | 1;
@@ -85,14 +85,15 @@ const FORM: { x: number; y: number; route: RouteId }[] = [
   { x: 372, y: 118, route: 'deep' },
   { x: 78, y: 158, route: 'out' },
 ];
-const CUSHION: { x: number; y: number }[] = [
-  { x: 58, y: -28 },
-  { x: 30, y: 24 },
-  { x: 92, y: -12 },
-  { x: 46, y: 22 },
-  { x: 108, y: -16 },
-  { x: 34, y: 32 },
-  { x: 72, y: -26 },
+/** Zone drops. These are not mirrors of the receivers. */
+const ZONES: { x: number; y: number }[] = [
+  { x: 170, y: -150 },
+  { x: 340, y: 0 },
+  { x: 80, y: 70 },
+  { x: -36, y: 6 },
+  { x: 250, y: 160 },
+  { x: 460, y: -40 },
+  { x: 20, y: 180 },
 ];
 
 export function attackOf(match: Match): 1 | -1 {
@@ -158,7 +159,7 @@ export function createMatch(opts: {
     control: 3,
     phase: 'ready',
     phaseT: 0,
-    message: 'DRAG BACK TO THROW',
+    message: 'DRAG TO AIM',
     clock: opts.halfLength,
     half: 1,
     halfLength: opts.halfLength,
@@ -189,10 +190,9 @@ export function spot(match: Match, ballX: number): void {
   }
   for (let i = 0; i < 7; i += 1) {
     const def = match.players[match.poss === 0 ? i + 7 : i]!;
-    const mark = match.players[match.poss === 0 ? i : i + 7]!;
-    const gap = CUSHION[i]!;
-    const y = clamp(mark.y + gap.y, SIDELINE_TOP + 52, SIDELINE_BOT - 18);
-    place(def, mark.x + gap.x * dir, y, 'thrower');
+    const zone = ZONES[i]!;
+    const y = clamp(MID_Y + zone.y, SIDELINE_TOP + 52, SIDELINE_BOT - 18);
+    place(def, x + zone.x * dir, y, 'thrower');
   }
   match.disc.mode = 'held';
   match.disc.holder = (match.poss === 0 ? 0 : 7) + 3;
@@ -206,7 +206,7 @@ export function spot(match: Match, ballX: number): void {
   match.phase = 'ready';
   match.phaseT = 0;
   match.celebrate = null;
-  match.message = 'DRAG BACK TO THROW';
+  match.message = 'DRAG TO AIM';
   if (match.poss === 1) {
     match.control = 3;
     match.phase = 'live';
@@ -228,8 +228,6 @@ function place(p: Athlete, x: number, y: number, route: RouteId): void {
 }
 
 export function launch(match: Match, flight: Flight, by: number): void {
-  const leads = receiverLeads(match, flight.kind);
-  const arriveAt = flightTime(flight.kind);
   match.disc.mode = 'flight';
   match.disc.holder = -1;
   match.disc.thrownBy = by;
@@ -246,27 +244,10 @@ export function launch(match: Match, flight: Flight, by: number): void {
   match.disc.x = flight.origin.x;
   match.disc.y = flight.origin.y;
   match.disc.z = 0.2;
+  match.disc.target = -1;
   match.phase = 'live';
   match.message = flight.kind === 'flick' ? 'FLICK' : 'FLOATER';
-  match.disc.target = -1;
-  const arrive = {
-    x: flight.origin.x + flight.aim.x * flight.speed * arriveAt,
-    y: flight.origin.y + flight.aim.y * flight.speed * arriveAt,
-  };
-  let n = 0;
-  match.players.forEach((p, i) => {
-    if (p.team !== match.poss || i === by) {
-      p.homing = false;
-      return;
-    }
-    const lead = leads[n++] ?? { x: p.x, y: p.y };
-    p.homeX = p.x;
-    p.homeY = p.y;
-    p.leadX = lead.x;
-    p.leadY = lead.y;
-    p.homing = true;
-    if (Math.hypot(lead.x - arrive.x, lead.y - arrive.y) < 18) match.disc.target = i;
-  });
+  for (const p of match.players) p.homing = false;
 }
 
 export function step(match: Match, dt: number, input: FrameInput): void {
@@ -276,31 +257,31 @@ export function step(match: Match, dt: number, input: FrameInput): void {
     if (match.phaseT >= 1.35) finishCelebrate(match);
     return;
   }
+  const offense = match.poss === 0;
+  if (offense && match.disc.mode === 'held') match.control = match.disc.holder;
+  else if (!offense && input.switchTo != null && match.players[input.switchTo]?.team === 0) {
+    match.control = input.switchTo;
+  }
+  match.routeT += dt;
   if (match.phase === 'ready') {
     match.phaseT += dt;
-    if (input.switchTo != null && match.players[input.switchTo]?.team === 0) match.control = input.switchTo;
-    if (!input.flight) return;
-    match.phase = 'live';
-  }
-  if (match.phase === 'live') {
+  } else if (match.phase === 'live') {
     match.clock -= dt;
     match.liveT += dt;
-    match.routeT += dt;
     if (match.clock <= 0) {
       onClock(match);
       return;
     }
   }
-  if (input.switchTo != null && match.players[input.switchTo]?.team === 0) {
-    match.control = input.switchTo;
-  }
-  movePeople(match, dt, input);
-  if (input.lunge) tryLunge(match);
+  const playInput = offense ? { ...input, moveX: 0, moveY: 0, switchTo: null, lunge: false } : input;
+  movePeople(match, dt, playInput);
+  if (!offense && (input.lunge || closeEnoughToLunge(match))) tryLunge(match);
   stepLunge(match, dt);
   if (input.flight && canThrow(match)) launch(match, input.flight, match.control);
   else maybeAiThrow(match);
   if (match.disc.mode === 'held') {
     syncHeld(match);
+    if (match.phase !== 'live') return;
     match.stall -= dt;
     if (match.stall <= 0) {
       turnover(match, 'STALL');
@@ -323,17 +304,21 @@ function canThrow(match: Match): boolean {
 
 function movePeople(match: Match, dt: number, input: FrameInput): void {
   const dir = attackOf(match);
+  const level = match.poss === 0 ? match.userSpeed : 0;
   for (let i = 0; i < match.players.length; i += 1) {
     const p = match.players[i]!;
     const offense = p.team === match.poss;
-    const controlled = i === match.control && p.team === 0;
+    const controlled = i === match.control && p.team === 0 && !offense;
     const hasDisc = match.disc.mode === 'held' && match.disc.holder === i;
-    if (hasDisc) {
-      p.vx = 0;
-      p.vy = 0;
-      continue;
+    if (hasDisc || p.lunge > 0) {
+      if (hasDisc) {
+        p.vx = 0;
+        p.vy = 0;
+      }
+      if (p.lunge > 0) continue;
+      if (hasDisc) continue;
     }
-    if (controlled && p.lunge <= 0) {
+    if (controlled) {
       const sp = moverSpeed(match, p.team);
       p.vx = input.moveX * sp;
       p.vy = input.moveY * sp;
@@ -342,41 +327,44 @@ function movePeople(match: Match, dt: number, input: FrameInput): void {
       p.y = clamp(p.y, SIDELINE_TOP + 8, SIDELINE_BOT - 8);
       continue;
     }
-    if (p.lunge > 0) continue;
-    if (offense && p.homing && match.disc.mode === 'flight') {
-      const u = clamp(match.disc.age / flightTime(match.disc.kind), 0, 1);
-      p.vx = p.leadX - p.homeX;
-      p.vy = p.leadY - p.homeY;
-      p.x = p.homeX + (p.leadX - p.homeX) * u;
-      p.y = p.homeY + (p.leadY - p.homeY) * u;
+    if (offense) {
+      const dest = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, Math.min(match.routeT, 1.25), routeSpeed(level));
+      dest.y = clamp(dest.y + Math.sin(match.routeT * 4 + i) * 14, SIDELINE_TOP + 28, SIDELINE_BOT - 28);
+      steer(p, dest.x, dest.y, routeSpeed(level), dt);
       continue;
     }
-    if (!offense) {
-      const mark = markFor(match, i);
-      const gx = mark.x - dir * (i % 7 === 0 ? 20 : 40);
-      const gy = mark.y;
-      const sp = moverSpeed(match, p.team) * (i % 7 === 0 ? 0.78 : 0.9);
-      const dx = gx - p.x;
-      const dy = gy - p.y;
-      const dist = Math.hypot(dx, dy) || 1;
-      const stepDist = Math.min(dist, sp * dt);
-      p.vx = (dx / dist) * sp;
-      p.vy = (dy / dist) * sp;
-      p.x += (dx / dist) * stepDist;
-      p.y += (dy / dist) * stepDist;
+    let gx = p.homeX + Math.sin(match.routeT * 1.3 + i) * 34;
+    let gy = p.homeY + Math.cos(match.routeT * 1.05 + i * 0.6) * 20;
+    if (match.disc.mode === 'flight') {
+      gx = gx * 0.72 + match.disc.x * 0.28;
+      gy = gy * 0.72 + match.disc.y * 0.28;
     }
+    steer(p, gx, clamp(gy, SIDELINE_TOP + 28, SIDELINE_BOT - 28), 96, dt);
   }
 }
 
-function markFor(match: Match, defenderIndex: number): Athlete {
-  const slot = defenderIndex % 7;
-  const offenseBase = match.poss === 0 ? 0 : 7;
-  return match.players[offenseBase + slot] ?? match.players[match.disc.holder] ?? match.players[0]!;
+function steer(p: Athlete, x: number, y: number, speed: number, dt: number): void {
+  const dx = x - p.x;
+  const dy = y - p.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const stepDist = Math.min(dist, speed * dt);
+  p.vx = (dx / dist) * speed;
+  p.vy = (dy / dist) * speed;
+  p.x += (dx / dist) * stepDist;
+  p.y += (dy / dist) * stepDist;
 }
 
 function moverSpeed(match: Match, team: 0 | 1): number {
   if (team === 0) return 150 * (1 + 0.22 * match.userSpeed);
   return 142;
+}
+
+function closeEnoughToLunge(match: Match): boolean {
+  if (match.poss !== 1 || match.disc.mode !== 'held') return false;
+  const me = match.players[match.control];
+  const holder = match.players[match.disc.holder];
+  if (!me || !holder || me.lunge > 0) return false;
+  return Math.hypot(me.x - holder.x, me.y - holder.y) < 42;
 }
 
 function tryLunge(match: Match): void {
@@ -426,31 +414,29 @@ function maybeAiThrow(match: Match): void {
 
 function stepFlight(match: Match, dt: number): void {
   match.disc.age += dt;
-  const sample = sampleFlight(asFlight(match), match.disc.age);
+  const flight = asFlight(match);
+  const sample = sampleFlight(flight, match.disc.age);
   match.disc.x = sample.x;
   match.disc.y = sample.y;
   match.disc.z = sample.z;
-  if (match.disc.age < flightTime(match.disc.kind) * 0.62) return;
-  const off = nearest(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
-  const def = nearest(match, sample, (p) => p.team !== match.poss);
-  const over = sample.z > (match.disc.kind === 'floater' ? 0.9 : 1.5);
-  if (!over && def.dist < 26 && def.dist + 4 < off.dist) {
-    turnover(match, 'BLOCK');
-    return;
-  }
-  const zOk = sample.z >= 0.12 && sample.z <= 2.4;
-  const aimed = match.disc.target;
-  const catchIndex = aimed >= 0 ? aimed : off.index;
-  const catchDist = aimed >= 0 ? Math.hypot((match.players[aimed]?.x ?? 0) - sample.x, (match.players[aimed]?.y ?? 0) - sample.y) : off.dist;
-  if (zOk && catchIndex >= 0 && catchDist <= match.disc.catchRadius) {
-    catchDisc(match, catchIndex, sample.x);
-    return;
-  }
-  if (sample.y < SIDELINE_TOP - 8 || sample.y > SIDELINE_BOT + 8) {
+  if (sample.y < SIDELINE_TOP - 10 || sample.y > SIDELINE_BOT + 10 || sample.x < PITCH_LEFT - 8 || sample.x > PITCH_RIGHT + 8) {
     turnover(match, 'OUT');
     return;
   }
-  if (match.disc.age >= match.disc.hang) turnover(match, 'DROP');
+  const descending = flight.hang > 0 && match.disc.age / flight.hang >= 0.55;
+  if (!descending) return;
+  const off = nearest(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
+  const def = nearest(match, sample, (p) => p.team !== match.poss);
+  const over = sample.z > (match.disc.kind === 'floater' ? 1.05 : 0.7);
+  if (!over && def.index >= 0 && def.dist <= 22 && def.dist + 2 < off.dist) {
+    turnover(match, 'BLOCK');
+    return;
+  }
+  if (off.index >= 0 && off.dist <= match.disc.catchRadius && sample.z <= 1.15) {
+    catchDisc(match, off.index, sample.x);
+    return;
+  }
+  if (match.disc.age >= flight.hang) turnover(match, 'INCOMPLETE');
 }
 
 function catchDisc(match: Match, index: number, x: number): void {
@@ -462,7 +448,7 @@ function catchDisc(match: Match, index: number, x: number): void {
   match.stall = 8;
   match.liveT = 0;
   match.aiWait = 0;
-  if (isEndZone(x, dir) || isEndZone(catcher.x, dir) || isEndZone(catcher.leadX, dir)) {
+  if (isEndZone(x, dir) || isEndZone(catcher.x, dir)) {
     celebrate(match, 'goal', 'GOAL');
     return;
   }
@@ -481,7 +467,7 @@ function catchDisc(match: Match, index: number, x: number): void {
   }
   match.routeT = 0;
   if (catcher.team === 0) match.control = index;
-  match.message = catcher.team === 0 ? 'DRAG BACK TO THROW' : 'DRAG TO RUN';
+  match.message = catcher.team === 0 ? 'DRAG TO AIM' : 'DRAG TO RUN';
   syncHeld(match);
 }
 
@@ -603,11 +589,9 @@ export function leadsFor(match: Match, kind: ThrowKind): Vec[] {
 }
 
 export function eligible(match: Match): number[] {
-  if (match.disc.mode === 'flight') return match.disc.target >= 0 ? [match.disc.target] : [];
-  if (match.disc.mode !== 'held') return [];
   const ids: number[] = [];
   match.players.forEach((p, i) => {
-    if (p.team === match.poss && i !== match.disc.holder) ids.push(i);
+    if (p.team === match.poss && i !== match.disc.holder && i !== match.disc.thrownBy) ids.push(i);
   });
   return ids;
 }

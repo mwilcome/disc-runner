@@ -110,12 +110,13 @@ export function flightTo(origin: Vec, target: Vec, kind: ThrowKind, catchLevel: 
   const dy = target.y - origin.y;
   const dist = Math.hypot(dx, dy) || 1;
   const time = flightTime(kind);
+  const hang = time / (kind === 'flick' ? 0.8 : 0.64);
   const radius = (kind === 'flick' ? 22 : 26) * (1 + 0.15 * catchLevel);
   return {
     origin: { x: origin.x, y: origin.y },
     aim: { x: dx / dist, y: dy / dist },
-    speed: dist / time,
-    hang: time / (kind === 'flick' ? 0.8 : 0.64),
+    speed: dist / hang,
+    hang,
     maxZ: kind === 'flick' ? 0.58 : 1.7,
     kind,
     catchRadius: radius,
@@ -137,28 +138,13 @@ export function flightFromPlan(origin: Vec, plan: ThrowPlan, catchLevel: number)
   };
 }
 
-/** Snap the throw onto a receiver when the aim is already in their lane. */
-export function assistFlight(
-  origin: Vec,
-  plan: ThrowPlan,
-  leads: Vec[],
-  catchLevel: number,
-): Flight {
-  const minDot = plan.kind === 'flick' ? 0.93 : 0.78;
-  let best = -1;
-  let bestDot = minDot;
-  for (let i = 0; i < leads.length; i += 1) {
-    const lead = leads[i]!;
-    const dx = lead.x - origin.x;
-    const dy = lead.y - origin.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 36) continue;
-    const dot = plan.aim.x * (dx / dist) + plan.aim.y * (dy / dist);
-    if (dot > bestDot) {
-      bestDot = dot;
-      best = i;
-    }
-  }
-  if (best >= 0) return flightTo(origin, leads[best]!, plan.kind, catchLevel);
+/** Where the disc meets the ground. Aim is the drag, not a receiver. */
+export function landingOf(flight: Flight): Vec {
+  const at = sampleFlight(flight, flight.hang);
+  return { x: at.x, y: at.y };
+}
+
+/** Slingshot. The drag picks a free point. Nearby players do not pull the disc. */
+export function assistFlight(origin: Vec, plan: ThrowPlan, _leads: Vec[], catchLevel: number): Flight {
   return flightFromPlan(origin, plan, catchLevel);
 }
