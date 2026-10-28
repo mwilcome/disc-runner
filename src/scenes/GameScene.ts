@@ -8,6 +8,7 @@ import { paintField } from './paintField';
 import {
   DISC_LIFT,
   discSample,
+  assistedPlan,
   dragToThrow,
   releaseSpeed,
   sweetSpot,
@@ -94,9 +95,9 @@ export class GameScene extends Phaser.Scene {
     const discStripe = this.add.ellipse(0, 0, 16, 4, COLOR.cream);
     this.discWrap.add([discBody, discStripe]);
 
-    this.scoreText = this.label(20, 18, '0', DISPLAY, '32px', '#fff6e8').setOrigin(0, 0);
+    this.scoreText = this.label(20, 8, '0', DISPLAY, '32px', '#fff6e8').setOrigin(0, 0);
     this.add
-      .text(20, 52, 'SCORE', {
+      .text(20, 42, 'SCORE', {
         fontFamily: BODY,
         fontSize: '12px',
         fontStyle: '700',
@@ -186,12 +187,11 @@ export class GameScene extends Phaser.Scene {
     const { x, y } = this.world(pointer);
     if (this.aim) {
       const drag = this.aim;
+      const point = this.releasePoint(drag, x, y);
       this.aim = null;
-      drag.x = x;
-      drag.y = y;
       this.match = throwDisc(this.match, {
-        dx: drag.x - drag.x0,
-        dy: drag.y - drag.y0,
+        dx: point.x - drag.x0,
+        dy: point.y - drag.y0,
         durationMs: Math.max(0, this.time.now - drag.t0),
         releaseSpeed: releaseSpeed(drag.samples),
       });
@@ -376,7 +376,16 @@ export class GameScene extends Phaser.Scene {
     this.discWrap.setAngle(angle);
   }
 
-  private planFromAim(): ThrowPlan | null {
+  /** Keep the preview point if pointer-up snaps back to the press. */
+  private releasePoint(drag: AimDrag, upX: number, upY: number): { x: number; y: number } {
+    const last = drag.samples[drag.samples.length - 1] ?? { x: drag.x, y: drag.y };
+    const upTravel = Math.hypot(upX - drag.x0, upY - drag.y0);
+    const previewTravel = Math.hypot(last.x - drag.x0, last.y - drag.y0);
+    if (drag.samples.length > 1 && upTravel + 16 < previewTravel) return { x: last.x, y: last.y };
+    return { x: upX, y: upY };
+  }
+
+  private rawPlan(): ThrowPlan | null {
     if (!this.aim) return null;
     return dragToThrow({
       dx: this.aim.x - this.aim.x0,
@@ -386,8 +395,20 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private planFromAim(): ThrowPlan | null {
+    const raw = this.rawPlan();
+    if (!raw) return null;
+    return assistedPlan(this.match.player, raw, this.match.cutter);
+  }
+
   private hintCopy(plan: ThrowPlan | null): string {
-    if (plan) return plan.kind === 'flick' ? 'Flick — fast and tight' : 'Floater — hangs up';
+    if (plan?.kind === 'flick') return 'Flick — put the ring on CUT';
+    if (plan?.kind === 'floater') {
+      const raw = this.rawPlan();
+      const locked =
+        !!raw && raw.aim.x * plan.aim.x + raw.aim.y * plan.aim.y < 0.999;
+      return locked ? 'Floater — locked on CUT' : 'Floater — put the ring on CUT';
+    }
     return this.match.message;
   }
 

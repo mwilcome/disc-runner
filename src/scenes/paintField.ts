@@ -2,13 +2,21 @@ import Phaser from 'phaser';
 import { COLOR } from '../game/constants';
 import { FIELD } from '../game/field';
 
-export function paintField(g: Phaser.GameObjects.Graphics): void {
+export function paintStripes(g: Phaser.GameObjects.Graphics): void {
   const { width, height } = FIELD;
   const stripe = 26;
   for (let y = 0; y < height; y += stripe) {
     g.fillStyle((y / stripe) % 2 === 0 ? COLOR.turf : COLOR.turfAlt, 1);
     g.fillRect(0, y, width, stripe);
   }
+}
+
+export function paintField(g: Phaser.GameObjects.Graphics): void {
+  const { width, height } = FIELD;
+  paintStripes(g);
+
+  g.fillStyle(COLOR.turfDeep, 1);
+  g.fillRect(0, 0, width, FIELD.endZoneTop);
 
   g.fillStyle(COLOR.endZone, 1);
   g.fillRect(0, FIELD.endZoneTop, width, FIELD.endZoneBottom - FIELD.endZoneTop);

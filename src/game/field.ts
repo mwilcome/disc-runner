@@ -14,12 +14,12 @@ export interface Athlete {
 export const FIELD = {
   width: 390,
   height: 844,
-  endZoneTop: 56,
-  endZoneBottom: 236,
-  minY: 92,
+  endZoneTop: 72,
+  endZoneBottom: 250,
+  minY: 168,
   plantX: 195,
-  plantY: 648,
-  lanes: [74, 195, 316] as const,
+  plantY: 660,
+  lanes: [78, 195, 312] as const,
 };
 
 export const RUN_SPEED = 205;
@@ -27,7 +27,7 @@ export const SLIDE_SPEED = 880;
 export const RETURN_RELEASE = 0.42;
 export const RETURN_FLIGHT = 0.78;
 export const RETURN_ARRIVE = RETURN_RELEASE + RETURN_FLIGHT;
-export const CUTTER_SPEED = 142;
+export const CUTTER_SPEED = 118;
 const CUT_START = 0.3;
 const CUT_DUR = 0.42;
 
@@ -36,7 +36,7 @@ export function clamp(n: number, min: number, max: number): number {
 }
 
 export function isEndZone(y: number): boolean {
-  return y >= FIELD.minY - 8 && y <= FIELD.endZoneBottom;
+  return y >= FIELD.endZoneTop && y <= FIELD.endZoneBottom;
 }
 
 export function nearestLane(x: number): Lane {
@@ -71,12 +71,15 @@ function smoothstep(u: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Scripted cut. `elapsed` is seconds since the thrower planted. */
+/** Scripted cut. Once the cutter crosses into the end zone they plant and hold. */
 export function cutterSpot(anchor: Vec, elapsed: number, cutLane: Lane): Vec {
   const startX = cutLane === 2 ? FIELD.lanes[0] + 16 : FIELD.lanes[2] - 16;
   const startY = Math.max(FIELD.minY + 12, Math.min(anchor.y - 108, anchor.y - 48));
-  const y = Math.max(FIELD.minY, startY - Math.max(0, elapsed) * CUTTER_SPEED);
-  const along = smoothstep((elapsed - CUT_START) / CUT_DUR);
+  const plantY = Math.max(FIELD.minY, FIELD.endZoneBottom - 36);
+  const secondsToPlant = Math.max(0, (startY - plantY) / CUTTER_SPEED);
+  const t = Math.min(Math.max(0, elapsed), secondsToPlant);
+  const y = startY - t * CUTTER_SPEED;
+  const along = smoothstep((t - CUT_START) / CUT_DUR);
   const x = startX + (FIELD.lanes[cutLane] - startX) * along;
   return { x, y };
 }

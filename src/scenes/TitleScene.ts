@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BODY, COLOR, DISPLAY } from '../game/constants';
 import { FIELD } from '../game/field';
-import { paintField } from './paintField';
+import { paintStripes } from './paintField';
 
 const TEXT_RES = Math.min(2, window.devicePixelRatio || 1);
 
@@ -11,10 +11,10 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(): void {
-    paintField(this.add.graphics());
+    paintStripes(this.add.graphics());
 
     this.add
-      .text(FIELD.width / 2, 250, 'Disc Runner', {
+      .text(FIELD.width / 2, 280, 'Disc Runner', {
         fontFamily: DISPLAY,
         fontSize: '58px',
         color: '#fff6e8',

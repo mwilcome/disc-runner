@@ -16,7 +16,16 @@ import {
   type Lane,
   type Vec,
 } from './field';
-import { discSample, discFromPlan, discToTarget, dragToThrow, type Disc, type DragGesture, type ThrowKind } from './throw';
+import {
+  assistedPlan,
+  discSample,
+  discFromPlan,
+  discToTarget,
+  dragToThrow,
+  type Disc,
+  type DragGesture,
+  type ThrowKind,
+} from './throw';
 
 export type Phase = 'throw' | 'flight' | 'run' | 'celebrate';
 
@@ -63,7 +72,8 @@ export function throwDisc(match: Match, drag: DragGesture): Match {
   if (match.phase !== 'throw') return match;
   const plan = dragToThrow(drag);
   if (!plan) return match;
-  return releaseDisc(match, discFromPlan(match.player, plan, 'player'));
+  const aimed = assistedPlan(match.player, plan, match.cutter);
+  return releaseDisc(match, discFromPlan(match.player, aimed, 'player'));
 }
 
 export function releaseDisc(match: Match, disc: Disc): Match {
@@ -152,8 +162,9 @@ function stepRun(match: Match, dt: number, laneStep: -1 | 0 | 1): Match {
 
   let disc = match.disc;
   let spawned = false;
-  if (!disc && phaseTime >= RETURN_RELEASE && match.returnMark) {
-    disc = discToTarget(match.cutter, match.returnMark, 'floater', RETURN_FLIGHT, 'cutter');
+    if (!disc && phaseTime >= RETURN_RELEASE && match.returnMark) {
+    const pass = discToTarget(match.cutter, match.returnMark, 'floater', RETURN_FLIGHT, 'cutter');
+    disc = { ...pass, catchRadius: 64 };
     spawned = true;
   }
   if (!disc) return { ...match, player, phaseTime, disc: null };
@@ -169,7 +180,7 @@ function stepRun(match: Match, dt: number, laneStep: -1 | 0 | 1): Match {
 
 function stepCelebrate(match: Match, dt: number): Match {
   const phaseTime = match.phaseTime + dt;
-  const hold = match.celebrate === 'score' ? 1.15 : 0.8;
+  const hold = match.celebrate === 'score' ? 1.25 : 1.05;
   if (phaseTime >= hold) return createMatch({ score: match.score, playCount: match.playCount + 1 });
   return { ...match, phaseTime };
 }
@@ -177,7 +188,11 @@ function stepCelebrate(match: Match, dt: number): Match {
 function onCatch(match: Match, sample: { x: number; y: number; z: number }): Match {
   const disc = match.disc;
   if (!disc) return match;
-  if (isEndZone(sample.y)) return toScore(match, scoreValue(disc.kind), disc.kind);
+  const caughtInZone =
+    isEndZone(sample.y) ||
+    (disc.thrownBy === 'player' && isEndZone(match.cutter.y)) ||
+    (disc.thrownBy === 'cutter' && isEndZone(match.player.y));
+  if (caughtInZone) return toScore(match, scoreValue(disc.kind), disc.kind);
   if (disc.thrownBy === 'player') return startRun(match);
   return plant(match, sample);
 }

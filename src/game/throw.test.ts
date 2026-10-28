@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD } from './field';
+import { FIELD, isEndZone } from './field';
 import {
   airReach,
+  assistedPlan,
   discFromPlan,
   discSample,
   discToTarget,
   dragToThrow,
   releaseSpeed,
+  sweetSpot,
   TUNING,
 } from './throw';
 
@@ -73,6 +75,39 @@ describe('trajectory', () => {
   it('can reach the end zone in the air with either throw', () => {
     expect(airReach(FIELD.plantY, FIELD.endZoneBottom, 'floater')).toBe(true);
     expect(airReach(FIELD.plantY, FIELD.endZoneBottom, 'flick')).toBe(true);
+  });
+
+  it('locks a floater aimed near the cutter and leaves a flick alone', () => {
+    const origin = { x: FIELD.plantX, y: FIELD.plantY };
+    const target = { x: FIELD.lanes[0], y: 214 };
+    const angle = Math.atan2(target.y - origin.y, target.x - origin.x);
+    const off = angle + (20 * Math.PI) / 180;
+    const floater = assistedPlan(
+      origin,
+      { kind: 'floater', aim: { x: Math.cos(off), y: Math.sin(off) }, power: 0.3 },
+      target,
+    );
+    const toTarget = Math.atan2(target.y - origin.y, target.x - origin.x);
+    const locked = Math.atan2(floater.aim.y, floater.aim.x);
+    expect(Math.abs(locked - toTarget)).toBeLessThan(0.05);
+
+    const flick = assistedPlan(
+      origin,
+      { kind: 'flick', aim: { x: Math.cos(off), y: Math.sin(off) }, power: 1 },
+      target,
+    );
+    expect(flick.aim.x).toBeCloseTo(Math.cos(off), 5);
+    expect(assistedPlan(origin, floater, null).aim).toEqual(floater.aim);
+  });
+
+  it('puts a full-power aim ring inside the end zone', () => {
+    for (const kind of ['floater', 'flick'] as const) {
+      const plan = dragToThrow({ dx: 0, dy: 400, durationMs: 500, releaseSpeed: kind === 'flick' ? 1.4 : 0.1 })!;
+      expect(plan.power).toBe(1);
+      expect(plan.kind).toBe(kind);
+      const ring = sweetSpot({ x: FIELD.plantX, y: FIELD.plantY }, plan);
+      expect(isEndZone(ring.y)).toBe(true);
+    }
   });
 
   it('puts an aimed pass on the target while it is still catchable', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FIELD, cutterSpot, isEndZone } from './field';
 import { createMatch, releaseDisc, throwDisc, tick, type Match } from './sim';
-import { discToTarget } from './throw';
+import { discFromPlan, discToTarget, planToward } from './throw';
 
 const FRAME = 1 / 60;
 
@@ -62,7 +62,12 @@ describe('match', () => {
     match = tickFor(match, flight + 0.05);
     expect(match.phase).toBe('run');
     const step: -1 | 0 | 1 = match.returnLane! > match.player.lane ? 1 : -1;
-    match = tickFor(match, 1.4, step);
+    let guard = 0;
+    match = tick(match, { dt: FRAME, laneStep: step });
+    while (match.phase === 'run' && guard < 200) {
+      match = tick(match, { dt: FRAME });
+      guard += 1;
+    }
     expect(match.phase).toBe('throw');
     expect(match.submessage).toBe('Planted');
     expect(match.player.y).toBeLessThan(FIELD.plantY);
@@ -82,9 +87,40 @@ describe('match', () => {
     }
     expect(match.celebrate).toBe('drop');
     expect(match.score).toBe(0);
-    match = tickFor(match, 1);
+    match = tickFor(match, 1.2);
     expect(match.phase).toBe('throw');
     expect(match.player.y).toBe(FIELD.plantY);
+  });
+
+  it('scores a floater when the aim ring is on a planted cutter', () => {
+    let match = tickFor(createMatch(), 4);
+    expect(isEndZone(match.cutter.y)).toBe(true);
+    const held = cutterSpot(match.routeAnchor, match.cutterElapsed + 1.5, match.cutterCutLane);
+    expect(held.x).toBeCloseTo(match.cutter.x, 0);
+    expect(held.y).toBeCloseTo(match.cutter.y, 0);
+    const plan = planToward(match.player, match.cutter, 'floater');
+    expect(plan).not.toBeNull();
+    match = releaseDisc(match, discFromPlan(match.player, plan!, 'player'));
+    match = tickFor(match, 1.6);
+    expect(match.celebrate).toBe('score');
+    expect(match.score).toBe(1);
+  });
+
+  it('still scores when a floater is aimed a little off the planted cutter', () => {
+    let match = tickFor(createMatch(), 4);
+    const dx = match.cutter.x - match.player.x;
+    const dy = match.cutter.y - match.player.y;
+    const angle = Math.atan2(dy, dx) + (22 * Math.PI) / 180;
+    match = throwDisc(match, {
+      dx: -Math.cos(angle) * 90,
+      dy: -Math.sin(angle) * 90,
+      durationMs: 420,
+      releaseSpeed: 0.15,
+    });
+    expect(match.disc?.kind).toBe('floater');
+    match = tickFor(match, 1.6);
+    expect(match.score).toBe(1);
+    expect(match.celebrate).toBe('score');
   });
 
   it('scores two for a flick caught in the end zone and keeps the score', () => {

@@ -47,18 +47,18 @@ export interface DiscSample {
 export const DISC_LIFT = 54;
 
 const MIN_DRAG = 28;
-const FULL_DRAG = 148;
+const FULL_DRAG = 104;
 const FLICK_SPEED = 0.72;
 const FLICK_DURATION = 170;
 
 export const TUNING = {
   floater: {
-    minSpeed: 240,
-    maxSpeed: 470,
-    minHang: 0.9,
-    maxHang: 1.28,
+    minSpeed: 250,
+    maxSpeed: 520,
+    minHang: 0.92,
+    maxHang: 1.3,
     maxZ: 1.72,
-    catchRadius: 62,
+    catchRadius: 92,
     zMin: 0.12,
     zMax: 2.5,
   },
@@ -68,7 +68,7 @@ export const TUNING = {
     minHang: 0.4,
     maxHang: 0.6,
     maxZ: 0.7,
-    catchRadius: 30,
+    catchRadius: 36,
     zMin: 0.1,
     zMax: 1.3,
   },
@@ -174,9 +174,48 @@ export function trajectoryPoints(origin: Vec, plan: ThrowPlan, steps = 12): Disc
   return points;
 }
 
+/** Power whose aim ring (the catch marker) lands on `target`. */
+export function planToward(origin: Vec, target: Vec, kind: ThrowKind): ThrowPlan | null {
+  const dx = target.x - origin.x;
+  const dy = target.y - origin.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1) return null;
+  const tuning = TUNING[kind];
+  let power = 1;
+  let bestError = Infinity;
+  for (let i = 0; i <= 48; i += 1) {
+    const candidate = i / 48;
+    const speed = tuning.minSpeed + (tuning.maxSpeed - tuning.minSpeed) * candidate;
+    const hang = tuning.minHang + (tuning.maxHang - tuning.minHang) * candidate;
+    const error = Math.abs(speed * hang * 0.75 - dist);
+    if (error < bestError) {
+      bestError = error;
+      power = candidate;
+    }
+  }
+  if (bestError > 36) return null;
+  return { kind, aim: { x: dx / dist, y: dy / dist }, power };
+}
+
+const FLOATER_LOCK_COS = Math.cos((32 * Math.PI) / 180);
+
+/** A floater aimed near the cutter locks onto them. Flicks stay where you aimed. */
+export function assistedPlan(origin: Vec, plan: ThrowPlan, target: Vec | null): ThrowPlan {
+  if (!target || plan.kind !== 'floater') return plan;
+  const dx = target.x - origin.x;
+  const dy = target.y - origin.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1) return plan;
+  const towardX = dx / dist;
+  const towardY = dy / dist;
+  const dot = plan.aim.x * towardX + plan.aim.y * towardY;
+  if (dot < FLOATER_LOCK_COS) return plan;
+  return planToward(origin, target, 'floater') ?? { ...plan, aim: { x: towardX, y: towardY } };
+}
+
 export function sweetSpot(origin: Vec, plan: ThrowPlan): DiscSample {
   const disc = discFromPlan(origin, plan);
-  return discSample({ ...disc, age: disc.hang * 0.55 });
+  return discSample({ ...disc, age: disc.hang * 0.75 });
 }
 
 export function airReach(originY: number, endZoneBottom: number, kind: ThrowKind): boolean {
