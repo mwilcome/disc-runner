@@ -52,7 +52,8 @@ export class ShopScene extends Phaser.Scene {
       }
       if (level < 3) {
         const cost = upgradeCost(level);
-        addButton(this, 760, y + 42, `+ ${cost}`, 2, career.coins >= cost ? 0x145c30 : 0x3a4038, () => {
+        const broke = career.coins < cost;
+        addButton(this, 760, y + 42, broke ? 'NEED COINS' : `+ ${cost}`, 2, broke ? 0x3a4038 : 0x145c30, () => {
           const next = buyUpgrade(career, key);
           if (next === career) return;
           saveCareer(next);

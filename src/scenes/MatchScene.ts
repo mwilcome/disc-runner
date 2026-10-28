@@ -8,14 +8,13 @@ import {
   attackOf,
   createMatch,
   eligible,
-  leadsFor,
   lungeReady,
   receiverLeads,
   step,
   type FrameInput,
   type Match,
 } from '../game/match';
-import { assistFlight, dragToThrow, flightTo, releaseSpeed, sampleFlight, type DragSample, type Flight } from '../game/throw';
+import { MIN_PULL, dragToThrow, flightFromPlan, landingOf, releaseSpeed, sampleFlight, type DragSample, type Flight } from '../game/throw';
 
 interface Drag {
   x0: number;
@@ -40,8 +39,6 @@ export class MatchScene extends Phaser.Scene {
   private aimGfx!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Graphics;
   private drag: Drag | null = null;
-  private shownArc: Flight | null = null;
-  private arcUntil = 0;
   private hit = 0;
   private catchUntil = 0;
   private catchWho = -1;
@@ -61,7 +58,6 @@ export class MatchScene extends Phaser.Scene {
     w: Phaser.Input.Keyboard.Key;
     s: Phaser.Input.Keyboard.Key;
     l: Phaser.Input.Keyboard.Key;
-    t: Phaser.Input.Keyboard.Key;
   };
 
   constructor() {
@@ -114,7 +110,6 @@ export class MatchScene extends Phaser.Scene {
         w: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
         s: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
         l: kb.addKey(Phaser.Input.Keyboard.KeyCodes.L),
-        t: kb.addKey(Phaser.Input.Keyboard.KeyCodes.T),
       };
     }
     this.input.mouse?.disableContextMenu();
@@ -122,12 +117,6 @@ export class MatchScene extends Phaser.Scene {
     this.input.on('pointerdown', this.onDown, this);
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup', this.onUp, this);
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'l' || ev.key === 'L') this.lunge = true;
-      if (ev.key === 't' || ev.key === 'T') this.releaseShownArc();
-    };
-    window.addEventListener('keydown', onKey);
-    this.events.once('shutdown', () => window.removeEventListener('keydown', onKey));
   }
 
   update(time: number, delta: number): void {
@@ -150,14 +139,13 @@ export class MatchScene extends Phaser.Scene {
       this.catchWho = this.match.disc.holder;
       this.catchUntil = time + 560;
     }
-    if (prev !== this.match.message && ['GOAL', 'BLOCK', 'DROP', 'STALL', 'OUT', 'HALF', 'FULL TIME'].includes(this.match.message)) {
-      this.hit = this.match.message === 'GOAL' ? 0.26 : 0.16;
-      this.ring = 0.34;
+    if (prev !== this.match.message && ['GOAL', 'CATCH', 'TIP', 'INCOMPLETE', 'BLOCK', 'STALL', 'OUT', 'HALF', 'FULL TIME'].includes(this.match.message)) {
+      this.hit = this.match.message === 'GOAL' ? 0.18 : 0.08;
+      this.ring = 0.28;
       this.ringX = this.match.disc.x;
       this.ringY = this.match.disc.y;
-      this.cameras.main.shake(220, this.match.message === 'GOAL' ? 0.016 : 0.01);
-      this.cameras.main.flash(90, 255, 244, 210, false);
-      blip(this.match.message === 'GOAL' ? 760 : 180, 0.1, 'triangle');
+      if (this.match.message === 'GOAL') this.cameras.main.shake(160, 0.008);
+      blip(this.match.message === 'GOAL' || this.match.message === 'CATCH' ? 760 : 180, 0.1, 'triangle');
     } else if (this.match.message !== prev && (this.match.message === 'FLICK' || this.match.message === 'FLOATER')) {
       blip(this.match.message === 'FLICK' ? 640 : 420, 0.06, 'triangle');
     }
@@ -174,9 +162,24 @@ export class MatchScene extends Phaser.Scene {
     this.sync(time);
     this.drawOverlay();
     this.drawHud();
-    const focus = this.match.disc.mode === 'flight' ? this.match.disc.x : this.match.players[this.match.control]?.x ?? this.match.disc.x;
-    const bias = this.match.disc.mode === 'flight' ? 0.4 : 0.3;
-    this.cameras.main.scrollX = Phaser.Math.Clamp(focus - VIEW_W * bias, 0, WORLD_W - VIEW_W);
+    this.cameras.main.scrollX = this.frameCamera();
+  }
+
+  private frameCamera(): number {
+    const disc = this.match.disc.x;
+    let sum = disc;
+    let n = 1;
+    for (const p of this.match.players) {
+      if (Math.abs(p.x - disc) < 720) {
+        sum += p.x;
+        n += 1;
+      }
+    }
+    const mid = sum / n;
+    const focus = disc * 0.62 + mid * 0.38;
+    const target = Phaser.Math.Clamp(focus - VIEW_W * 0.48, 0, WORLD_W - VIEW_W);
+    const gap = target - this.cameras.main.scrollX;
+    return this.cameras.main.scrollX + (Math.abs(gap) > 640 ? gap : gap * 0.2);
   }
 
   private frameInput(): FrameInput {
@@ -191,30 +194,20 @@ export class MatchScene extends Phaser.Scene {
         moveX = x / len;
         moveY = y / len;
       }
-      if (Phaser.Input.Keyboard.JustDown(keys.l)) this.lunge = true;
-      if (keys.t && Phaser.Input.Keyboard.JustDown(keys.t)) this.releaseShownArc();
+      if (Phaser.Input.Keyboard.JustDown(keys.l) && this.match.poss === 1) this.lunge = true;
     }
-    const held = this.userHasDisc();
+    const offense = this.match.poss === 0;
     return {
-      moveX: held ? 0 : moveX,
-      moveY: held ? 0 : moveY,
+      moveX: offense ? 0 : moveX,
+      moveY: offense ? 0 : moveY,
       flight: null,
       switchTo: null,
-      lunge: this.lunge,
+      lunge: offense ? false : this.lunge,
     };
   }
 
   private userHasDisc(): boolean {
-    return this.match.disc.mode === 'held' && this.match.disc.holder === this.match.control && this.match.poss === 0;
-  }
-
-  private releaseShownArc(): void {
-    if (!this.userHasDisc()) return;
-    const flight = this.readyArc();
-    if (!flight) return;
-    this.shownArc = flight;
-    this.arcUntil = this.time.now + 2400;
-    step(this.match, 0, { ...IDLE, flight });
+    return this.match.disc.mode === 'held' && this.match.poss === 0;
   }
 
   private at(pointer: Phaser.Input.Pointer): { x: number; y: number } {
@@ -223,25 +216,6 @@ export class MatchScene extends Phaser.Scene {
 
   private onDown(pointer: Phaser.Input.Pointer): void {
     if (this.time.now - this.born < 400) return;
-    const ev = pointer.event as MouseEvent | undefined;
-    const rawX = ev && typeof ev.offsetX === 'number' ? ev.offsetX : pointer.x;
-    const rawY = ev && typeof ev.offsetY === 'number' ? ev.offsetY : pointer.y;
-    const inGame = pointer.x > VIEW_W - 220 && pointer.y > VIEW_H - 100;
-    const inDisplay = rawX > this.scale.displaySize.width - 300 && rawY > this.scale.displaySize.height - 150;
-    if ((inGame || inDisplay) && lungeReady(this.match)) {
-      this.lunge = true;
-      const me = this.match.players[this.match.control];
-      const holder = this.match.players[this.match.disc.holder];
-      if (me && holder) {
-        me.lunge = 0.55;
-        const dx = holder.x - me.x;
-        const dy = holder.y - me.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        me.vx = (dx / dist) * 280;
-        me.vy = (dy / dist) * 280;
-      }
-      return;
-    }
     const now = this.time.now;
     const p = this.at(pointer);
     this.drag = { x0: p.x, y0: p.y, x: p.x, y: p.y, t0: now, samples: [{ t: now, x: p.x, y: p.y }] };
@@ -271,12 +245,12 @@ export class MatchScene extends Phaser.Scene {
     const drag = this.drag;
     this.drag = null;
     const up = this.at(pointer);
-    const dx = up.x - drag.x0;
-    const dy = up.y - drag.y0;
+    const dx = drag.x - drag.x0;
+    const dy = drag.y - drag.y0;
     const len = Math.hypot(dx, dy);
     this.moveX = 0;
     this.moveY = 0;
-    if (this.userHasDisc() && len >= 24) {
+    if (this.userHasDisc() && len >= MIN_PULL) {
       const plan = dragToThrow({
         dx,
         dy,
@@ -286,26 +260,24 @@ export class MatchScene extends Phaser.Scene {
       if (!plan) return;
       const holder = this.match.players[this.match.disc.holder];
       if (!holder) return;
-      const flight = assistFlight(
-        { x: holder.x, y: holder.y },
-        plan,
-        leadsFor(this.match, plan.kind),
-        this.match.userCatch,
-      );
-      this.shownArc = flight;
-      this.arcUntil = this.time.now + 2400;
+      const flight = flightFromPlan({ x: holder.x, y: holder.y }, plan, this.match.userCatch);
       step(this.match, 0, { ...IDLE, flight });
       return;
     }
-    if (len < 20) {
-      const hit = this.nearestUser(up.x, up.y);
-      if (hit >= 0) step(this.match, 0, { ...IDLE, switchTo: hit });
+    if (this.match.poss !== 1 || len > 48) return;
+    const hit = this.nearestUser(up.x, up.y);
+    if (hit < 0) return;
+    if (hit === this.match.control && lungeReady(this.match)) {
+      this.lunge = true;
+      step(this.match, 0, { ...IDLE, lunge: true });
+      return;
     }
+    if (hit !== this.match.control) step(this.match, 0, { ...IDLE, switchTo: hit });
   }
 
   private nearestUser(x: number, y: number): number {
     let best = -1;
-    let dist = 42;
+    let dist = 110;
     this.match.players.forEach((p, i) => {
       if (p.team !== 0) return;
       const d = Math.hypot(p.x - x, p.y - y);
@@ -348,8 +320,8 @@ export class MatchScene extends Phaser.Scene {
     const flying = this.match.disc.mode === 'flight';
     const lift = this.match.disc.z * 58;
     const rate = this.match.disc.kind === 'flick' ? 17 : 8.5;
-    const wobble = flying ? Math.abs(Math.sin(this.match.disc.age * rate)) : 0.72;
-    const spin = flying ? this.match.disc.age * (this.match.disc.kind === 'flick' ? 260 : 150) : attackOf(this.match) > 0 ? 16 : 164;
+    const wobble = flying ? 0.65 + 0.35 * Math.abs(Math.sin(this.match.disc.age * rate)) : 0.8;
+    const spin = flying ? this.match.disc.age * (this.match.disc.kind === 'flick' ? 420 : 260) : attackOf(this.match) > 0 ? 16 : 164;
     this.trail.unshift({ x: this.match.disc.x, y: this.match.disc.y - lift });
     this.trail.length = 5;
     this.ghosts.forEach((ghost, i) => {
@@ -359,16 +331,16 @@ export class MatchScene extends Phaser.Scene {
       if (!show || !bit) return;
       ghost.setPosition(bit.x, bit.y);
       ghost.setAngle(spin - (i + 1) * 36);
-      ghost.setScale(2.6, 0.4 + wobble * 1.3);
+      ghost.setScale(3.1, 1.05 + wobble * 0.45);
     });
     this.disc.setPosition(this.match.disc.x, this.match.disc.y - lift);
     this.disc.setAngle(spin);
-    this.disc.setScale(3.25, flying ? 0.42 + wobble * 1.75 : 1.35);
+    this.disc.setScale(3.6, flying ? 1.25 + wobble * 0.7 : 1.45);
     this.discShadow.setPosition(this.match.disc.x, this.match.disc.y + 4);
     this.discShadow.setAlpha(flying ? 0.45 * (1 - Math.min(this.match.disc.z, 1.6) / 2.2) : 0.4);
     this.discShadow.setScale(3.4 + this.match.disc.z * 1.1, 1.3);
     const stars = eligible(this.match);
-    const pulse = 2.85 + Math.sin(time / 140) * 0.15;
+    const pulse = 2.15 + Math.sin(time / 140) * 0.08;
     this.stars.forEach((star, i) => {
       const id = stars[i];
       if (id == null) {
@@ -383,17 +355,6 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  private readyArc(): Flight | null {
-    if (!this.userHasDisc() || this.drag) return null;
-    const holder = this.match.players[this.match.disc.holder];
-    const leads = leadsFor(this.match, 'floater');
-    if (!holder || leads.length === 0) return null;
-    const dir = attackOf(this.match);
-    let best = leads[0]!;
-    for (const lead of leads) if (lead.x * dir > best.x * dir) best = lead;
-    return flightTo({ x: holder.x, y: holder.y }, best, 'floater', this.match.userCatch);
-  }
-
   private preview(): Flight | null {
     if (!this.drag || !this.userHasDisc()) return null;
     const plan = dragToThrow({
@@ -405,14 +366,13 @@ export class MatchScene extends Phaser.Scene {
     if (!plan) return null;
     const holder = this.match.players[this.match.disc.holder];
     if (!holder) return null;
-    return assistFlight({ x: holder.x, y: holder.y }, plan, leadsFor(this.match, plan.kind), this.match.userCatch);
+    return flightFromPlan({ x: holder.x, y: holder.y }, plan, this.match.userCatch);
   }
 
   private drawOverlay(): void {
     const g = this.aimGfx;
     g.clear();
-    const dir = attackOf(this.match);
-    if (this.match.disc.mode === 'held') {
+    if (this.match.disc.mode === 'held' && !this.drag) {
       const tips = receiverLeads(this.match, 'floater');
       let n = 0;
       this.match.players.forEach((p, i) => {
@@ -424,10 +384,8 @@ export class MatchScene extends Phaser.Scene {
         const reach = Math.min(72, len);
         const ax = p.x + (dx / len) * reach;
         const ay = p.y - 40 + (dy / len) * reach;
-        g.lineStyle(4, 0xfff2c4, 0.95);
-        g.lineBetween(p.x, p.y - 40, ax, ay);
-        g.fillStyle(0xffe14a, 1);
-        g.fillTriangle(ax + dir * 9, ay, ax - dir * 8, ay - 7, ax - dir * 8, ay + 7);
+        g.lineStyle(2, 0xfff2c4, 0.35);
+        g.lineBetween(p.x, p.y - 36, ax, ay);
       });
     }
     const me = this.match.players[this.match.control];
@@ -445,30 +403,47 @@ export class MatchScene extends Phaser.Scene {
       g.lineStyle(4, 0xfff6e4, this.ring / 0.34);
       g.strokeCircle(this.ringX, this.ringY, radius);
     }
-    const flight = this.preview() ?? (this.time.now < this.arcUntil ? this.shownArc : null) ?? this.readyArc();
-    if (!flight) return;
-    if (this.drag) {
+    if (this.drag && this.userHasDisc()) {
       const dx = this.drag.x - this.drag.x0;
       const dy = this.drag.y - this.drag.y0;
-      const len = Math.hypot(dx, dy) || 1;
-      const pull = Math.min(len, 90);
-      g.fillStyle(flight.kind === 'flick' ? 0xff5a4a : 0xf4f0e0, 0.9);
-      const band = flight.kind === 'flick' ? 4 : 7;
-      g.fillCircle(this.drag.x, this.drag.y, 6);
-      g.lineStyle(band, flight.kind === 'flick' ? 0xff5a4a : 0xffd15c, 0.95);
-      g.lineBetween(
-        flight.origin.x,
-        flight.origin.y - 20,
-        flight.origin.x + (dx / len) * pull * 0.55,
-        flight.origin.y - 20 + (dy / len) * pull * 0.55,
-      );
+      const len = Math.hypot(dx, dy);
+      g.lineStyle(7, 0xffd15c, 1);
+      g.lineBetween(this.drag.x0, this.drag.y0, this.drag.x, this.drag.y);
+      g.fillStyle(0xfff6e4, 1);
+      g.fillCircle(this.drag.x, this.drag.y, 8);
+      if (len < MIN_PULL) drawBit(g, 'PULL MORE', this.drag.x + 14, this.drag.y - 18, 0xfff6e4, 2);
     }
-    for (let i = 1; i <= 16; i += 1) {
-      const age = (flight.hang * i) / 16;
-      const sample = sampleFlight(flight, age);
-      g.fillStyle(0xfff8ea, 1);
-      g.fillCircle(sample.x, sample.y - sample.z * 56, flight.kind === 'flick' ? 4 : 5.5);
+    const flight = this.preview() ?? this.liveFlight();
+    if (!flight) return;
+    if (this.drag) {
+      for (let i = 1; i <= 18; i += 1) {
+        const age = (flight.hang * i) / 18;
+        const sample = sampleFlight(flight, age);
+        g.fillStyle(0xfff8ea, 1);
+        g.fillCircle(sample.x, sample.y - sample.z * 56, i === 18 ? 7 : 5);
+      }
     }
+    const land = landingOf(flight);
+    g.lineStyle(5, 0xffe14a, 1);
+    g.strokeCircle(land.x, land.y, 26);
+    g.fillStyle(0xffe14a, 1);
+    g.fillCircle(land.x, land.y, 6);
+    g.lineBetween(land.x - 14, land.y, land.x + 14, land.y);
+    g.lineBetween(land.x, land.y - 14, land.x, land.y + 14);
+  }
+
+  private liveFlight(): Flight | null {
+    if (this.match.disc.mode !== 'flight') return null;
+    const d = this.match.disc;
+    return {
+      origin: { x: d.originX, y: d.originY },
+      aim: { x: d.aimX, y: d.aimY },
+      speed: d.speed,
+      hang: d.hang,
+      maxZ: d.maxZ,
+      kind: d.kind,
+      catchRadius: d.catchRadius,
+    };
   }
 
   private drawHud(): void {
@@ -489,26 +464,36 @@ export class MatchScene extends Phaser.Scene {
     drawBit(g, mid, (VIEW_W - textWidth(mid, 3)) / 2, 10, 0xffd15c, 3);
     const right = `${them} ${this.match.score[1]}`;
     drawBit(g, right, VIEW_W - 16 - textWidth(right, 3), 10, 0xf4f0e0, 3);
+    const pull = this.drag && this.userHasDisc()
+      ? Math.hypot(this.drag.x - this.drag.x0, this.drag.y - this.drag.y0)
+      : 0;
     const hint = this.match.phase === 'celebrate' || this.match.phase === 'end' || this.match.disc.mode === 'flight'
       ? this.match.message
-      : this.userHasDisc()
-        ? `STALL ${Math.max(0, Math.ceil(this.match.stall))}  DRAG BACK`
-        : 'DRAG TO RUN  TAP TO SWITCH';
+      : pull > 0 && pull < MIN_PULL
+        ? 'PULL MORE'
+        : this.match.message === 'SNAP' || this.match.message === 'DEFEND'
+          ? this.match.message
+          : this.userHasDisc()
+            ? this.match.phase === 'live'
+              ? `STALL ${Math.max(0, Math.ceil(this.match.stall))}  DRAG TO AIM`
+              : 'DRAG TO AIM'
+            : lungeReady(this.match)
+              ? 'TAP RUNNER TO LUNGE'
+              : 'DRAG TO RUN  TAP TO SWITCH';
     drawBit(g, hint, 16, VIEW_H - 24, 0xf4f0e0, 2);
-    if (lungeReady(this.match)) {
-      g.fillStyle(0xff5a4a, 1);
-      g.fillRect(VIEW_W - 132, VIEW_H - 30, 120, 26);
-      drawBit(g, 'LUNGE', VIEW_W - 118, VIEW_H - 24, 0x102418, 2);
-    }
     if (this.match.phase === 'celebrate' || this.match.phase === 'end') {
       const msg = this.match.message;
-      const scale = msg.length > 8 ? 4 : 6;
-      const w = textWidth(msg, scale) + 36;
-      g.fillStyle(0x102418, 0.88);
-      g.fillRect((VIEW_W - w) / 2, VIEW_H / 2 - 36, w, 5 * scale + 28);
-      g.lineStyle(3, this.match.message === 'GOAL' ? 0xffe14a : 0xff5a4a, 1);
-      g.strokeRect((VIEW_W - w) / 2, VIEW_H / 2 - 36, w, 5 * scale + 28);
-      drawBit(g, msg, (VIEW_W - textWidth(msg, scale)) / 2, VIEW_H / 2 - 18, 0xf4f0e0, scale);
+      const scale = msg.length > 8 ? 5 : 7;
+      const w = textWidth(msg, scale) + 48;
+      const h = 5 * scale + 36;
+      const left = (VIEW_W - w) / 2;
+      const top = VIEW_H / 2 - h / 2;
+      g.fillStyle(0x07140c, 1);
+      g.fillRect(left, top, w, h);
+      const gold = this.match.message === 'GOAL' || this.match.message === 'CATCH';
+      g.lineStyle(5, gold ? 0xffe14a : 0xff5a4a, 1);
+      g.strokeRect(left, top, w, h);
+      drawBit(g, msg, (VIEW_W - textWidth(msg, scale)) / 2, top + 16, 0xfff6e4, scale);
     }
   }
 }
