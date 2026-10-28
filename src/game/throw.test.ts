@@ -98,6 +98,8 @@ describe('trajectory', () => {
     );
     expect(flick.aim.x).toBeCloseTo(Math.cos(off), 5);
     expect(assistedPlan(origin, floater, null).aim).toEqual(floater.aim);
+    const sideways = assistedPlan(origin, { kind: 'floater', aim: { x: 1, y: 0 }, power: 1 }, target);
+    expect(sideways.aim).toEqual({ x: 1, y: 0 });
   });
 
   it('puts a full-power aim ring inside the end zone', () => {

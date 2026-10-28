@@ -197,7 +197,7 @@ export function planToward(origin: Vec, target: Vec, kind: ThrowKind): ThrowPlan
   return { kind, aim: { x: dx / dist, y: dy / dist }, power };
 }
 
-const FLOATER_LOCK_COS = Math.cos((32 * Math.PI) / 180);
+const FLOATER_LOCK_COS = Math.cos((48 * Math.PI) / 180);
 
 /** A floater aimed near the cutter locks onto them. Flicks stay where you aimed. */
 export function assistedPlan(origin: Vec, plan: ThrowPlan, target: Vec | null): ThrowPlan {
