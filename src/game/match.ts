@@ -35,6 +35,7 @@ export interface DiscState {
   maxZ: number;
   catchRadius: number;
   thrownBy: number;
+  target: number;
 }
 
 export type Phase = 'ready' | 'live' | 'celebrate' | 'end';
@@ -74,8 +75,25 @@ export interface FrameInput {
 
 export const IDLE: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false };
 
-const Y_SLOTS = [-168, -112, -52, 0, 56, 116, 172];
-const ROUTES: RouteId[] = ['out', 'slant', 'hook', 'thrower', 'in', 'deep', 'out'];
+/** Staggered depths so a snap reads as a play, not a drill line. */
+const FORM: { x: number; y: number; route: RouteId }[] = [
+  { x: 36, y: -108, route: 'out' },
+  { x: 250, y: -58, route: 'slant' },
+  { x: 16, y: -8, route: 'hook' },
+  { x: -124, y: 28, route: 'thrower' },
+  { x: 210, y: 70, route: 'in' },
+  { x: 372, y: 118, route: 'deep' },
+  { x: 78, y: 158, route: 'out' },
+];
+const CUSHION: { x: number; y: number }[] = [
+  { x: 58, y: -28 },
+  { x: 30, y: 24 },
+  { x: 92, y: -12 },
+  { x: 46, y: 22 },
+  { x: 108, y: -16 },
+  { x: 34, y: 32 },
+  { x: 72, y: -26 },
+];
 
 export function attackOf(match: Match): 1 | -1 {
   if (match.poss === 0) return match.userAttack;
@@ -133,6 +151,7 @@ export function createMatch(opts: {
       maxZ: 1,
       catchRadius: 40,
       thrownBy: -1,
+      target: -1,
     },
     poss: 0,
     userAttack: 1,
@@ -164,20 +183,22 @@ export function spot(match: Match, ballX: number): void {
   const x = clamp(ballX, PITCH_LEFT + 140, PITCH_RIGHT - 140);
   for (let i = 0; i < 7; i += 1) {
     const off = match.players[match.poss === 0 ? i : i + 7]!;
-    const y = clamp(MID_Y + Y_SLOTS[i]!, SIDELINE_TOP + 18, SIDELINE_BOT - 18);
-    const px = x + (i === 3 ? -52 * dir : 28 * dir);
-    place(off, px, y, i === 3 ? 'thrower' : ROUTES[i]!);
+    const slot = FORM[i]!;
+    const y = clamp(MID_Y + slot.y, SIDELINE_TOP + 52, SIDELINE_BOT - 18);
+    place(off, x + slot.x * dir, y, slot.route);
   }
   for (let i = 0; i < 7; i += 1) {
     const def = match.players[match.poss === 0 ? i + 7 : i]!;
     const mark = match.players[match.poss === 0 ? i : i + 7]!;
-    place(def, mark.x + dir * (i === 3 ? 200 : 170), mark.y + (i % 2 === 0 ? 18 : -18), 'thrower');
+    const gap = CUSHION[i]!;
+    const y = clamp(mark.y + gap.y, SIDELINE_TOP + 52, SIDELINE_BOT - 18);
+    place(def, mark.x + gap.x * dir, y, 'thrower');
   }
   match.disc.mode = 'held';
   match.disc.holder = (match.poss === 0 ? 0 : 7) + 3;
   match.disc.thrownBy = -1;
-  match.control = match.poss === 0 ? match.disc.holder : match.poss === 1 ? 0 : 0;
-  if (match.poss === 1) match.control = 0;
+  match.disc.target = -1;
+  match.control = match.disc.holder;
   match.routeT = 0;
   match.stall = 8;
   match.liveT = 0;
@@ -185,7 +206,12 @@ export function spot(match: Match, ballX: number): void {
   match.phase = 'ready';
   match.phaseT = 0;
   match.celebrate = null;
-  match.message = match.poss === 0 ? 'DRAG BACK TO THROW' : 'DRAG TO RUN';
+  match.message = 'DRAG BACK TO THROW';
+  if (match.poss === 1) {
+    match.control = 3;
+    match.phase = 'live';
+    match.message = 'DRAG TO RUN';
+  }
   syncHeld(match);
 }
 
@@ -203,6 +229,7 @@ function place(p: Athlete, x: number, y: number, route: RouteId): void {
 
 export function launch(match: Match, flight: Flight, by: number): void {
   const leads = receiverLeads(match, flight.kind);
+  const arriveAt = flightTime(flight.kind);
   match.disc.mode = 'flight';
   match.disc.holder = -1;
   match.disc.thrownBy = by;
@@ -221,6 +248,11 @@ export function launch(match: Match, flight: Flight, by: number): void {
   match.disc.z = 0.2;
   match.phase = 'live';
   match.message = flight.kind === 'flick' ? 'FLICK' : 'FLOATER';
+  match.disc.target = -1;
+  const arrive = {
+    x: flight.origin.x + flight.aim.x * flight.speed * arriveAt,
+    y: flight.origin.y + flight.aim.y * flight.speed * arriveAt,
+  };
   let n = 0;
   match.players.forEach((p, i) => {
     if (p.team !== match.poss || i === by) {
@@ -233,6 +265,7 @@ export function launch(match: Match, flight: Flight, by: number): void {
     p.leadX = lead.x;
     p.leadY = lead.y;
     p.homing = true;
+    if (Math.hypot(lead.x - arrive.x, lead.y - arrive.y) < 18) match.disc.target = i;
   });
 }
 
@@ -352,7 +385,7 @@ function tryLunge(match: Match): void {
   const holder = match.players[match.disc.holder];
   if (!me || !holder || me.team !== 0) return;
   if (Math.hypot(me.x - holder.x, me.y - holder.y) > 110) return;
-  me.lunge = 0.24;
+  me.lunge = 0.36;
   const dx = holder.x - me.x;
   const dy = holder.y - me.y;
   const dist = Math.hypot(dx, dy) || 1;
@@ -406,8 +439,11 @@ function stepFlight(match: Match, dt: number): void {
     return;
   }
   const zOk = sample.z >= 0.12 && sample.z <= 2.4;
-  if (zOk && off.dist <= match.disc.catchRadius && off.index >= 0) {
-    catchDisc(match, off.index, sample.x);
+  const aimed = match.disc.target;
+  const catchIndex = aimed >= 0 ? aimed : off.index;
+  const catchDist = aimed >= 0 ? Math.hypot((match.players[aimed]?.x ?? 0) - sample.x, (match.players[aimed]?.y ?? 0) - sample.y) : off.dist;
+  if (zOk && catchIndex >= 0 && catchDist <= match.disc.catchRadius) {
+    catchDisc(match, catchIndex, sample.x);
     return;
   }
   if (sample.y < SIDELINE_TOP - 8 || sample.y > SIDELINE_BOT + 8) {
@@ -520,8 +556,8 @@ function syncHeld(match: Match): void {
   const holder = match.players[match.disc.holder];
   if (!holder || match.disc.mode !== 'held') return;
   const dir = attackOf(match);
-  match.disc.x = holder.x + dir * 16;
-  match.disc.y = holder.y - 22;
+  match.disc.x = holder.x + dir * 26;
+  match.disc.y = holder.y - 46;
   match.disc.z = 0.25;
 }
 
@@ -537,6 +573,15 @@ function asFlight(match: Match): Flight {
   };
 }
 
+function breakY(p: Athlete): number {
+  const side = p.y < MID_Y ? -1 : 1;
+  if (p.route === 'out') return side * 78;
+  if (p.route === 'in') return -side * 62;
+  if (p.route === 'slant') return -side * 50;
+  if (p.route === 'hook') return -side * 16;
+  return side * 14;
+}
+
 export function receiverLeads(match: Match, kind: ThrowKind): Vec[] {
   const dir = attackOf(match);
   const time = flightTime(kind);
@@ -545,7 +590,10 @@ export function receiverLeads(match: Match, kind: ThrowKind): Vec[] {
   match.players.forEach((p, i) => {
     if (p.team !== match.poss || i === match.disc.holder) return;
     const factor = p.route === 'deep' ? 1 : p.route === 'slant' ? 0.78 : p.route === 'hook' ? 0.4 : 0.66;
-    leads.push({ x: p.x + dir * speed * time * factor, y: p.y });
+    leads.push({
+      x: p.x + dir * speed * time * factor,
+      y: clamp(p.y + breakY(p), SIDELINE_TOP + 20, SIDELINE_BOT - 20),
+    });
   });
   return leads;
 }
@@ -555,6 +603,7 @@ export function leadsFor(match: Match, kind: ThrowKind): Vec[] {
 }
 
 export function eligible(match: Match): number[] {
+  if (match.disc.mode === 'flight') return match.disc.target >= 0 ? [match.disc.target] : [];
   if (match.disc.mode !== 'held') return [];
   const ids: number[] = [];
   match.players.forEach((p, i) => {
@@ -564,11 +613,9 @@ export function eligible(match: Match): number[] {
 }
 
 export function lungeReady(match: Match): boolean {
-  if (match.poss === 0 || match.disc.mode !== 'held' || match.phase === 'celebrate') return false;
+  if (match.poss === 0 || match.disc.mode !== 'held' || match.phase !== 'live') return false;
   const me = match.players[match.control];
   const holder = match.players[match.disc.holder];
   if (!me || !holder || me.team !== 0) return false;
   return Math.hypot(me.x - holder.x, me.y - holder.y) < 110;
 }
-
-// Re-export routePoint on athletes via a small adapter used above.

@@ -15,12 +15,12 @@ export const EZ_RIGHT_START = EZ_LEFT_END + PLAY_LEN;
 export const PITCH_RIGHT = EZ_RIGHT_START + EZ_DEPTH;
 export const WORLD_W = PITCH_RIGHT + 160;
 
-export const SIDELINE_TOP = 96;
-export const SIDELINE_BOT = 500;
+export const SIDELINE_TOP = 82;
+export const SIDELINE_BOT = 468;
 export const MID_Y = (SIDELINE_TOP + SIDELINE_BOT) / 2;
 
 /** Opening spot sits in the attacking red zone so one floater can finish. */
-export const OPEN_X = 3300;
+export const OPEN_X = 3000;
 
 export function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));

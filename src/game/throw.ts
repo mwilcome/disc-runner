@@ -1,4 +1,4 @@
-import { clamp, type Vec } from './field';
+import { MID_Y, SIDELINE_BOT, SIDELINE_TOP, clamp, type Vec } from './field';
 
 export type ThrowKind = 'floater' | 'flick';
 export type RouteId = 'thrower' | 'deep' | 'out' | 'in' | 'hook' | 'slant';
@@ -79,22 +79,21 @@ export function routePoint(home: Vec, route: RouteId, dir: 1 | -1, t: number, sp
   const s = Math.max(0, t) * speed;
   let x = home.x;
   let y = home.y;
-  const mid = 298;
   if (route === 'deep') x = home.x + dir * s;
   else if (route === 'hook') x = home.x + dir * Math.min(s, 120);
   else if (route === 'out') {
     x = home.x + dir * s * 0.82;
-    const side = home.y < mid ? 120 : 470;
+    const side = home.y < MID_Y ? SIDELINE_TOP + 36 : SIDELINE_BOT - 36;
     const step = Math.min(Math.abs(side - home.y), s * 0.35);
     y = home.y + Math.sign(side - home.y) * step;
   } else if (route === 'in') {
     x = home.x + dir * s * 0.78;
-    y = home.y + (mid - home.y) * Math.min(1, s / 240);
+    y = home.y + (MID_Y - home.y) * Math.min(1, s / 240);
   } else {
     x = home.x + dir * s * 0.9;
-    y = home.y + (mid - home.y) * Math.min(1, s / 180);
+    y = home.y + (MID_Y - home.y) * Math.min(1, s / 180);
   }
-  return { x, y: clamp(y, 112, 484) };
+  return { x, y: clamp(y, SIDELINE_TOP + 16, SIDELINE_BOT - 16) };
 }
 
 export function sampleFlight(flight: Flight, age: number): { x: number; y: number; z: number } {

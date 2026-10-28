@@ -15,9 +15,9 @@ export interface Career {
 }
 
 export const SQUADS = [
-  { id: 'grove', name: 'GROVE', jersey: '#3dcc6a', shorts: '#145c30', skin: '#f0c29a' },
-  { id: 'tide', name: 'TIDE', jersey: '#3c7dff', shorts: '#17356e', skin: '#e7b48a' },
-  { id: 'ember', name: 'EMBER', jersey: '#ef4d4d', shorts: '#7a2020', skin: '#f2c6a4' },
+  { id: 'grove', name: 'GROVE', jersey: '#9af56e', shorts: '#0d3d22', skin: '#f3c7a2', cap: '#157a38', trim: '#fff6e4' },
+  { id: 'tide', name: 'TIDE', jersey: '#8eb6ff', shorts: '#142a56', skin: '#e7b48a', cap: '#1d4eab', trim: '#fff6e4' },
+  { id: 'ember', name: 'EMBER', jersey: '#ff8074', shorts: '#6a1e1e', skin: '#f6d0b0', cap: '#c43732', trim: '#fff6e4' },
 ] as const;
 
 const NEXT: Record<Exclude<Stage, 'done'>, Stage> = {

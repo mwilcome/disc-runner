@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { drawBit, textWidth } from '../game/art';
 import { SQUADS, applyResult, loadCareer, reward, saveCareer } from '../game/career';
 import { VIEW_W } from '../game/field';
-import { addButton } from './ui';
+import { addButton, paintBar, paintPanel } from './ui';
 
 export class ResultScene extends Phaser.Scene {
   constructor() {
@@ -23,10 +23,8 @@ export class ResultScene extends Phaser.Scene {
     saveCareer(next);
     this.cameras.main.setBackgroundColor('#102418');
     const g = this.add.graphics();
-    g.fillStyle(0x163222, 1);
-    g.fillRoundedRect(100, 70, 760, 400, 12);
-    g.lineStyle(3, 0xf4f0e0, 1);
-    g.strokeRoundedRect(100, 70, 760, 400, 12);
+    paintBar(g, VIEW_W);
+    paintPanel(g, 100, 80, 760, 380);
     const title = won ? 'WIN' : 'LOSS';
     drawBit(g, title, (VIEW_W - textWidth(title, 6)) / 2, 110, won ? 0xffd15c : 0xff5a4a, 6);
     const oppName = SQUADS[data.oppSquad ?? 1]?.name ?? 'OPP';

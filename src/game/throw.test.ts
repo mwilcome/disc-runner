@@ -31,7 +31,7 @@ describe('releaseSpeed', () => {
 
 describe('routes and flight', () => {
   it('puts a full floater to the deep route in the end zone', () => {
-    const home = { x: OPEN_X + 28, y: 300 };
+    const home = { x: EZ_RIGHT_START - 180, y: 300 };
     const lead = routePoint(home, 'deep', 1, flightTime('floater'), routeSpeed(0));
     expect(isEndZone(lead.x, 1)).toBe(true);
     expect(lead.x).toBeGreaterThan(EZ_RIGHT_START);

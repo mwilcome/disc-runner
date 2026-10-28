@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawBit, textWidth } from '../game/art';
+import { athleteKey, buildTextures, drawBit, textWidth } from '../game/art';
 import { loadCareer, newCareer, saveCareer, type SquadId } from '../game/career';
 import { VIEW_H, VIEW_W } from '../game/field';
 import { addButton } from './ui';
@@ -12,11 +12,17 @@ export class TitleScene extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor('#102418');
     this.add.rectangle(VIEW_W / 2, VIEW_H / 2, VIEW_W, VIEW_H, 0x102418);
+    buildTextures(this);
     const g = this.add.graphics();
     g.fillStyle(0x1f7a3c, 1);
-    g.fillRect(0, 390, VIEW_W, 150);
-    g.lineStyle(4, 0xf4f0e0, 0.85);
-    g.lineBetween(0, 390, VIEW_W, 390);
+    g.fillRect(0, 400, VIEW_W, 140);
+    g.lineStyle(4, 0xf4f0e0, 0.9);
+    g.lineBetween(0, 400, VIEW_W, 400);
+    g.fillStyle(0xffd15c, 1);
+    g.fillRect(0, 400, VIEW_W, 4);
+    ([0, 1, 2] as const).forEach((squad, i) => {
+      this.add.image(220 + i * 260, 520, athleteKey(squad, 'run0', i)).setOrigin(0.5, 1).setScale(3.2);
+    });
 
     const title = 'DISC RUNNER';
     drawBit(g, title, (VIEW_W - textWidth(title, 6)) / 2, 90, 0xf4f0e0, 6);
@@ -38,6 +44,6 @@ export class TitleScene extends Phaser.Scene {
         this.scene.start('hub');
       });
     });
-    drawBit(g, '7 ASIDE  -  SCORE IN THE END ZONE', (VIEW_W - textWidth('7 ASIDE  -  SCORE IN THE END ZONE', 2)) / 2, 470, 0xf4f0e0, 2);
+    drawBit(g, '7 ASIDE  -  SCORE IN THE END ZONE', (VIEW_W - textWidth('7 ASIDE  -  SCORE IN THE END ZONE', 2)) / 2, 372, 0xf4f0e0, 2);
   }
 }

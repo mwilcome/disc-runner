@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { drawBit, textWidth } from '../game/art';
 import { buyUpgrade, loadCareer, saveCareer, upgradeCost, type Career } from '../game/career';
 import { VIEW_W } from '../game/field';
-import { addButton } from './ui';
+import { addButton, paintBar, paintPanel } from './ui';
 
 const STATS = [
   ['THROW', 'throw'],
@@ -28,30 +28,40 @@ export class ShopScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.cameras.main.setBackgroundColor('#102418');
     const g = this.add.graphics();
-    g.fillStyle(0x163222, 1);
-    g.fillRoundedRect(70, 30, 820, 480, 12);
-    g.lineStyle(3, 0xf4f0e0, 1);
-    g.strokeRoundedRect(70, 30, 820, 480, 12);
+    paintBar(g, VIEW_W);
+    paintPanel(g, 70, 64, 820, 420);
     const title = 'UPGRADES';
-    drawBit(g, title, (VIEW_W - textWidth(title, 4)) / 2, 52, 0xf4f0e0, 4);
+    drawBit(g, title, 28, 14, 0xf4f0e0, 3);
     const coins = `COINS ${career.coins}`;
-    drawBit(g, coins, (VIEW_W - textWidth(coins, 3)) / 2, 100, 0xffd15c, 3);
+    drawBit(g, coins, VIEW_W - 28 - textWidth(coins, 3), 14, 0xffd15c, 3);
 
     STATS.forEach(([label, key], i) => {
-      const y = 180 + i * 80;
+      const y = 110 + i * 100;
       const level = career[key];
-      const pips = `${label}  ${'O'.repeat(level)}${'-'.repeat(3 - level)}`;
-      drawBit(g, pips, 120, y, 0xf4f0e0, 3);
+      g.fillStyle(0x102418, 1);
+      g.fillRoundedRect(100, y, 760, 82, 8);
+      g.lineStyle(2, 0xf4f0e0, 0.85);
+      g.strokeRoundedRect(100, y, 760, 82, 8);
+      drawBit(g, label, 124, y + 28, 0xf4f0e0, 3);
+      for (let n = 0; n < 3; n += 1) {
+        const px = 330 + n * 52;
+        g.fillStyle(n < level ? 0xffd15c : 0x102418, 1);
+        g.fillRoundedRect(px, y + 26, 44, 28, 3);
+        g.lineStyle(3, n < level ? 0xfff6e4 : 0xf4f0e0, 1);
+        g.strokeRoundedRect(px, y + 26, 44, 28, 3);
+      }
       if (level < 3) {
         const cost = upgradeCost(level);
-        addButton(this, 760, y + 8, `+ ${cost}`, 2, career.coins >= cost ? 0x145c30 : 0x3a4038, () => {
+        addButton(this, 760, y + 42, `+ ${cost}`, 2, career.coins >= cost ? 0x145c30 : 0x3a4038, () => {
           const next = buyUpgrade(career, key);
           if (next === career) return;
           saveCareer(next);
           this.draw(next);
         });
+      } else {
+        drawBit(g, 'MAX', 730, y + 30, 0xffd15c, 3);
       }
     });
-    addButton(this, VIEW_W / 2, 460, 'BACK', 3, 0x17356e, () => this.scene.start('hub'));
+    addButton(this, VIEW_W / 2, 440, 'BACK', 3, 0x17356e, () => this.scene.start('hub'));
   }
 }
