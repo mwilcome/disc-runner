@@ -1,10 +1,10 @@
-import type { Vec } from './field';
+import { clamp, type Vec } from './field';
 
 export type ThrowKind = 'floater' | 'flick';
+export type RouteId = 'thrower' | 'deep' | 'out' | 'in' | 'hook' | 'slant';
 
 export interface ThrowPlan {
   kind: ThrowKind;
-  /** Unit vector. Screen +y is downfield, so an upfield throw has negative y. */
   aim: Vec;
   power: number;
 }
@@ -19,60 +19,31 @@ export interface DragGesture {
   dx: number;
   dy: number;
   durationMs: number;
-  /** Pixels per millisecond over the last moments of the drag. */
   releaseSpeed: number;
 }
 
-export interface Disc {
+export interface Flight {
   origin: Vec;
   aim: Vec;
   speed: number;
   hang: number;
   maxZ: number;
   kind: ThrowKind;
-  age: number;
   catchRadius: number;
-  zMin: number;
-  zMax: number;
-  thrownBy: 'player' | 'cutter';
 }
 
-export interface DiscSample {
-  x: number;
-  y: number;
-  z: number;
+const MIN_DRAG = 24;
+const FULL_DRAG = 120;
+const FLICK_SPEED = 0.7;
+const FLICK_MS = 170;
+
+export function flightTime(kind: ThrowKind): number {
+  return kind === 'flick' ? 0.52 : 1.15;
 }
 
-/** Pixels of screen lift per unit of disc height. Shared by the preview and the sprite. */
-export const DISC_LIFT = 54;
-
-const MIN_DRAG = 28;
-const FULL_DRAG = 104;
-const FLICK_SPEED = 0.72;
-const FLICK_DURATION = 170;
-
-export const TUNING = {
-  floater: {
-    minSpeed: 250,
-    maxSpeed: 520,
-    minHang: 0.92,
-    maxHang: 1.3,
-    maxZ: 1.72,
-    catchRadius: 92,
-    zMin: 0.12,
-    zMax: 2.5,
-  },
-  flick: {
-    minSpeed: 560,
-    maxSpeed: 1040,
-    minHang: 0.4,
-    maxHang: 0.6,
-    maxZ: 0.7,
-    catchRadius: 36,
-    zMin: 0.1,
-    zMax: 1.3,
-  },
-} as const;
+export function routeSpeed(level: number): number {
+  return 200 * (1 + 0.2 * level);
+}
 
 export function releaseSpeed(samples: DragSample[], windowMs = 90): number {
   if (samples.length < 2) return 0;
@@ -89,16 +60,13 @@ export function releaseSpeed(samples: DragSample[], windowMs = 90): number {
   return Math.hypot(last.x - first.x, last.y - first.y) / dt;
 }
 
-/**
- * Drag-opposite throw. The disc flies against the drag.
- * A fast or very short drag is a flick; a slower pull is a floater.
- */
+/** Drag-opposite throw. A fast or very short drag is a flick. */
 export function dragToThrow(drag: DragGesture): ThrowPlan | null {
   const length = Math.hypot(drag.dx, drag.dy);
   if (length < MIN_DRAG) return null;
-  const power = clamp01((length - MIN_DRAG) / (FULL_DRAG - MIN_DRAG));
+  const power = clamp((length - MIN_DRAG) / (FULL_DRAG - MIN_DRAG), 0, 1);
   const kind: ThrowKind =
-    drag.releaseSpeed >= FLICK_SPEED || drag.durationMs <= FLICK_DURATION ? 'flick' : 'floater';
+    drag.releaseSpeed >= FLICK_SPEED || drag.durationMs <= FLICK_MS ? 'flick' : 'floater';
   return {
     kind,
     aim: { x: -drag.dx / length, y: -drag.dy / length },
@@ -106,127 +74,92 @@ export function dragToThrow(drag: DragGesture): ThrowPlan | null {
   };
 }
 
-export function discFromPlan(
-  origin: Vec,
-  plan: ThrowPlan,
-  thrownBy: Disc['thrownBy'] = 'player',
-): Disc {
-  const tuning = TUNING[plan.kind];
+export function routePoint(home: Vec, route: RouteId, dir: 1 | -1, t: number, speed: number): Vec {
+  if (route === 'thrower') return { x: home.x, y: home.y };
+  const s = Math.max(0, t) * speed;
+  let x = home.x;
+  let y = home.y;
+  const mid = 298;
+  if (route === 'deep') x = home.x + dir * s;
+  else if (route === 'hook') x = home.x + dir * Math.min(s, 120);
+  else if (route === 'out') {
+    x = home.x + dir * s * 0.82;
+    const side = home.y < mid ? 120 : 470;
+    const step = Math.min(Math.abs(side - home.y), s * 0.35);
+    y = home.y + Math.sign(side - home.y) * step;
+  } else if (route === 'in') {
+    x = home.x + dir * s * 0.78;
+    y = home.y + (mid - home.y) * Math.min(1, s / 240);
+  } else {
+    x = home.x + dir * s * 0.9;
+    y = home.y + (mid - home.y) * Math.min(1, s / 180);
+  }
+  return { x, y: clamp(y, 112, 484) };
+}
+
+export function sampleFlight(flight: Flight, age: number): { x: number; y: number; z: number } {
+  const travel = flight.speed * Math.max(0, age);
+  const x = flight.origin.x + flight.aim.x * travel;
+  const y = flight.origin.y + flight.aim.y * travel;
+  const n = flight.hang <= 0 ? 1 : age / flight.hang;
+  if (n <= 0 || n >= 1) return { x, y, z: 0 };
+  return { x, y, z: 4 * flight.maxZ * n * (1 - n) };
+}
+
+export function flightTo(origin: Vec, target: Vec, kind: ThrowKind, catchLevel: number): Flight {
+  const dx = target.x - origin.x;
+  const dy = target.y - origin.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const time = flightTime(kind);
+  const radius = (kind === 'flick' ? 22 : 26) * (1 + 0.15 * catchLevel);
+  return {
+    origin: { x: origin.x, y: origin.y },
+    aim: { x: dx / dist, y: dy / dist },
+    speed: dist / time,
+    hang: time / (kind === 'flick' ? 0.8 : 0.64),
+    maxZ: kind === 'flick' ? 0.58 : 1.7,
+    kind,
+    catchRadius: radius,
+  };
+}
+
+export function flightFromPlan(origin: Vec, plan: ThrowPlan, catchLevel: number): Flight {
+  const speed =
+    plan.kind === 'flick' ? 460 + plan.power * 280 : 240 + plan.power * 180;
+  const hang = plan.kind === 'flick' ? 0.42 + plan.power * 0.16 : 0.9 + plan.power * 0.45;
   return {
     origin: { x: origin.x, y: origin.y },
     aim: { x: plan.aim.x, y: plan.aim.y },
-    speed: tuning.minSpeed + (tuning.maxSpeed - tuning.minSpeed) * plan.power,
-    hang: tuning.minHang + (tuning.maxHang - tuning.minHang) * plan.power,
-    maxZ: tuning.maxZ,
+    speed,
+    hang,
+    maxZ: plan.kind === 'flick' ? 0.58 : 1.7,
     kind: plan.kind,
-    age: 0,
-    catchRadius: tuning.catchRadius,
-    zMin: tuning.zMin,
-    zMax: tuning.zMax,
-    thrownBy,
+    catchRadius: (plan.kind === 'flick' ? 22 : 26) * (1 + 0.15 * catchLevel),
   };
 }
 
-/** Places the disc on `target` at `flightTime`, still in the air (used for returns and tests). */
-export function discToTarget(
+/** Snap the throw onto a receiver when the aim is already in their lane. */
+export function assistFlight(
   origin: Vec,
-  target: Vec,
-  kind: ThrowKind,
-  flightTime: number,
-  thrownBy: Disc['thrownBy'],
-): Disc {
-  const dx = target.x - origin.x;
-  const dy = target.y - origin.y;
-  const dist = Math.hypot(dx, dy);
-  const safeTime = Math.max(0.05, flightTime);
-  const tuning = TUNING[kind];
-  return {
-    origin: { x: origin.x, y: origin.y },
-    aim: dist < 1 ? { x: 0, y: -1 } : { x: dx / dist, y: dy / dist },
-    speed: dist < 1 ? 0 : dist / safeTime,
-    // Arrive on the descending half so the disc is still in the air, then lands soon after.
-    hang: safeTime / 0.8,
-    maxZ: tuning.maxZ,
-    kind,
-    age: 0,
-    catchRadius: tuning.catchRadius,
-    zMin: tuning.zMin,
-    zMax: tuning.zMax,
-    thrownBy,
-  };
-}
-
-export function discSample(disc: Disc): DiscSample {
-  const travel = disc.speed * Math.max(0, disc.age);
-  const x = disc.origin.x + disc.aim.x * travel;
-  const y = disc.origin.y + disc.aim.y * travel;
-  const n = disc.hang <= 0 ? 1 : disc.age / disc.hang;
-  if (n <= 0 || n >= 1) return { x, y, z: 0 };
-  return { x, y, z: 4 * disc.maxZ * n * (1 - n) };
-}
-
-export function trajectoryPoints(origin: Vec, plan: ThrowPlan, steps = 12): DiscSample[] {
-  const disc = discFromPlan(origin, plan);
-  const points: DiscSample[] = [];
-  for (let i = 0; i <= steps; i += 1) {
-    points.push(discSample({ ...disc, age: (disc.hang * i) / steps }));
-  }
-  return points;
-}
-
-/** Power whose aim ring (the catch marker) lands on `target`. */
-export function planToward(origin: Vec, target: Vec, kind: ThrowKind): ThrowPlan | null {
-  const dx = target.x - origin.x;
-  const dy = target.y - origin.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist < 1) return null;
-  const tuning = TUNING[kind];
-  let power = 1;
-  let bestError = Infinity;
-  for (let i = 0; i <= 48; i += 1) {
-    const candidate = i / 48;
-    const speed = tuning.minSpeed + (tuning.maxSpeed - tuning.minSpeed) * candidate;
-    const hang = tuning.minHang + (tuning.maxHang - tuning.minHang) * candidate;
-    const error = Math.abs(speed * hang * 0.75 - dist);
-    if (error < bestError) {
-      bestError = error;
-      power = candidate;
+  plan: ThrowPlan,
+  leads: Vec[],
+  catchLevel: number,
+): Flight {
+  const minDot = plan.kind === 'flick' ? 0.93 : 0.78;
+  let best = -1;
+  let bestDot = minDot;
+  for (let i = 0; i < leads.length; i += 1) {
+    const lead = leads[i]!;
+    const dx = lead.x - origin.x;
+    const dy = lead.y - origin.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 36) continue;
+    const dot = plan.aim.x * (dx / dist) + plan.aim.y * (dy / dist);
+    if (dot > bestDot) {
+      bestDot = dot;
+      best = i;
     }
   }
-  if (bestError > 36) return null;
-  return { kind, aim: { x: dx / dist, y: dy / dist }, power };
-}
-
-const FLOATER_LOCK_COS = Math.cos((48 * Math.PI) / 180);
-
-/** A floater aimed near the cutter locks onto them. Flicks stay where you aimed. */
-export function assistedPlan(origin: Vec, plan: ThrowPlan, target: Vec | null): ThrowPlan {
-  if (!target || plan.kind !== 'floater') return plan;
-  const dx = target.x - origin.x;
-  const dy = target.y - origin.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist < 1) return plan;
-  const towardX = dx / dist;
-  const towardY = dy / dist;
-  const dot = plan.aim.x * towardX + plan.aim.y * towardY;
-  if (dot < FLOATER_LOCK_COS) return plan;
-  return planToward(origin, target, 'floater') ?? { ...plan, aim: { x: towardX, y: towardY } };
-}
-
-export function sweetSpot(origin: Vec, plan: ThrowPlan): DiscSample {
-  const disc = discFromPlan(origin, plan);
-  return discSample({ ...disc, age: disc.hang * 0.75 });
-}
-
-export function airReach(originY: number, endZoneBottom: number, kind: ThrowKind): boolean {
-  const disc = discFromPlan({ x: 0, y: originY }, { kind, aim: { x: 0, y: -1 }, power: 1 });
-  for (let i = 1; i < 30; i += 1) {
-    const sample = discSample({ ...disc, age: (disc.hang * i) / 30 });
-    if (sample.y <= endZoneBottom && sample.z >= disc.zMin && sample.z <= disc.zMax) return true;
-  }
-  return false;
-}
-
-function clamp01(n: number): number {
-  return Math.max(0, Math.min(1, n));
+  if (best >= 0) return flightTo(origin, leads[best]!, plan.kind, catchLevel);
+  return flightFromPlan(origin, plan, catchLevel);
 }

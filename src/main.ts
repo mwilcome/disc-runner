@@ -1,23 +1,24 @@
 import Phaser from 'phaser';
 import './style.css';
-import { FIELD } from './game/field';
-import { GameScene } from './scenes/GameScene';
+import { VIEW_H, VIEW_W } from './game/field';
+import { HubScene } from './scenes/HubScene';
+import { MatchScene } from './scenes/MatchScene';
+import { ResultScene } from './scenes/ResultScene';
+import { ShopScene } from './scenes/ShopScene';
 import { TitleScene } from './scenes/TitleScene';
+import { installViewport } from './shell/viewport';
 
-const blockGesture = (event: Event) => {
-  event.preventDefault();
-};
-document.addEventListener('gesturestart', blockGesture, { passive: false });
-document.addEventListener('gesturechange', blockGesture, { passive: false });
-document.addEventListener('contextmenu', blockGesture);
+installViewport();
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'app',
-  backgroundColor: '#0c3d22',
-  width: FIELD.width,
-  height: FIELD.height,
+  backgroundColor: '#102418',
+  width: VIEW_W,
+  height: VIEW_H,
   banner: false,
+  pixelArt: true,
+  roundPixels: true,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -31,8 +32,8 @@ const game = new Phaser.Game({
     },
     touch: { capture: true },
   },
-  scene: [TitleScene, GameScene],
-  render: { antialias: true },
+  render: { antialias: false, pixelArt: true, roundPixels: true },
+  scene: [TitleScene, HubScene, ShopScene, MatchScene, ResultScene],
 });
 
 if (import.meta.hot) {

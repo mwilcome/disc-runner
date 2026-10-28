@@ -10,7 +10,7 @@ function audio(): AudioContext | null {
   return ctx;
 }
 
-export function blip(freq: number, dur = 0.07, type: OscillatorType = 'sine', gain = 0.045): void {
+export function blip(freq: number, dur = 0.07, type: OscillatorType = 'sine'): void {
   const ac = audio();
   if (!ac) return;
   const t = ac.currentTime;
@@ -18,18 +18,10 @@ export function blip(freq: number, dur = 0.07, type: OscillatorType = 'sine', ga
   const amp = ac.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(freq, t);
-  amp.gain.setValueAtTime(gain, t);
+  amp.gain.setValueAtTime(0.04, t);
   amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.connect(amp);
   amp.connect(ac.destination);
   osc.start(t);
   osc.stop(t + dur + 0.02);
-}
-
-export function vibrate(ms: number): void {
-  try {
-    navigator.vibrate?.(ms);
-  } catch {
-    // Some browsers throw if vibration is blocked. The game does not need it.
-  }
 }

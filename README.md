@@ -1,7 +1,7 @@
 # Disc Runner
 
-Portrait arcade flying-disc game. Plant and drag a throw, then run the return.
+Landscape arcade flying-disc game. Run a squad through a short season, throw floaters and flicks, score in the end zone.
 
-![Disc Runner screenshot](screenshot.png)
+![Disc Runner match](screenshot.png)
 
 `npm i && npm run dev` · Netlify: Node 22, `npm run build`, publish `dist`.
