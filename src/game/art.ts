@@ -30,91 +30,72 @@ const POSES: Record<string, string[]> = {
   stand: pose([
     '........CCCCC...........',
     '.......CCCCCCC..........',
-    '.......CCChCCC..........',
-    '......CCCCCsss..........',
-    '.......Csssss...........',
-    '.......Cs.ss............',
-    '......aJJJJJJa..........',
-    '......JJJTTTJJ..........',
-    '......JJJTTTJJ..........',
-    '.......JJJJJJ...........',
-    '........pppp............',
-    '.......pp..pp...........',
-    '.......pp..pp...........',
-    '......fff..fff..........',
-    '.....ff......ff.........',
+    '.......CChssCC..........',
+    '........sssss...........',
+    '.......aJJJJJa..........',
+    '........JJTTJJ..........',
+    '........JJJJJJ..........',
+    '.........pppp...........',
+    '.........pppp...........',
+    '.........ffff...........',
+    '........ff..ff..........',
   ]),
   run0: pose([
     '........CCCCC...........',
     '.......CCCCCCC..........',
-    '.......CCChCCC..........',
-    '......CCCCCsss..........',
-    '.......Csssss...........',
-    '......aCs.ss............',
-    '.....aaJJJJJJ...........',
-    '.......JJTTTJJ..........',
-    '........JJJJJ...........',
-    '........pppp............',
-    '.......pp...............',
-    '......ff....ppp.........',
-    '.............ff.........',
-    '....ff..................',
+    '.......CChssCC..........',
+    '........sssss...........',
+    '......a.JJJJJ...........',
+    '........JJTTJJ..........',
+    '.........JJJJJ..........',
+    '..........pppp..........',
+    '.........f.pp.f.........',
+    '.......ff.......ff......',
   ]),
   run1: pose([
     '........CCCCC...........',
     '.......CCCCCCC..........',
-    '.......CCChCCCa.........',
-    '......CCCCCssaa.........',
-    '.......Csssss...........',
-    '........s.ss............',
-    '.....a.JJJJJJ...........',
-    '........JJTTTJ..........',
+    '.......CChssCC..........',
+    '........sssssa..........',
+    '.........JJJJJa.........',
+    '........JJTTJJ..........',
     '........JJJJJ...........',
-    '..........pppp..........',
-    '.............pp.........',
-    '.......ppp....ff........',
-    '.......ff...............',
-    '.................ff.....',
+    '.........pppp...........',
+    '.......f.pp.f...........',
+    '......ff.......ff.......',
   ]),
   throw: pose([
-    '........CCCCC......aa...',
-    '.......CCCCCCC....aa....',
-    '.......CCChCCC...a......',
-    '......CCCCCsss..a.......',
-    '.......Csssss..a........',
-    '......aCs.ss..a.........',
-    '.....aaJJJJJJa..........',
-    '.......JJTTTJJ..........',
-    '........JJJJJ...........',
-    '........pppppp..........',
-    '.......pp....pp.........',
-    '......fff....fff........',
-    '.....ff........ff.......',
+    '........CCCCC....aa.....',
+    '.......CCCCCCC..aa......',
+    '.......CChssCC.a........',
+    '........sssss...........',
+    '.......aJJJJJ...........',
+    '........JJTTJJ..........',
+    '........JJJJJJ..........',
+    '.........pppp...........',
+    '.........ffff...........',
+    '........ff..ff..........',
   ]),
   catch: pose([
-    '..aa..........CCCCC..aa.',
-    '.aa..........CCCCCCC.aa.',
-    'aa...........CCChCCCaa..',
-    'a............CCCCCssa...',
-    '.............Cssssss....',
-    '.............Cs.ss......',
-    '............aJJJJJJa....',
-    '............JJJTTTJJ....',
+    '...........aa.CCCCC.....',
+    '..........aa.CCCCCCC....',
+    '.........aa..CChssCC....',
+    '.............sssss......',
+    '............aJJJJJa.....',
+    '.............JJTTJJ.....',
     '.............JJJJJJ.....',
     '..............pppp......',
-    '.............pp..pp.....',
-    '............fff..fff....',
-    '...........ff......ff...',
+    '..............ffff......',
+    '.............ff..ff.....',
   ]),
   dive: pose([
     '......CCCCC.............',
     '.....CCCCCCC............',
-    '.....CCChCCCaaa.........',
-    '....CCCCCsssJJ..........',
-    '.....CssssJJJJJpp.......',
-    '....aJJTTTJJJJJpp.ff....',
-    '.....JJJJJJJpp....ff....',
-    '......pppppp............',
+    '.....CChssCCaaa.........',
+    '......ssssJJJJJ.........',
+    '.....aJJTTJJJJpp........',
+    '......JJJJJJppff........',
+    '.......pppp.............',
   ]),
 };
 
@@ -339,13 +320,13 @@ export function paintPitch(g: Phaser.GameObjects.Graphics): void {
       g.fillRect(x, y, 2, 2);
     }
   }
-  g.fillStyle(0x1d6c38, 0.55);
+  g.fillStyle(0x14562c, 1);
   g.fillRect(PITCH_LEFT, SIDELINE_TOP, EZ_LEFT_END - PITCH_LEFT, span);
   g.fillRect(EZ_RIGHT_START, SIDELINE_TOP, PITCH_RIGHT - EZ_RIGHT_START, span);
-  for (let i = 0; i < 8; i += 1) {
-    g.fillStyle(0x14562c, 0.35);
-    g.fillRect(PITCH_LEFT + 18 + i * 64, SIDELINE_TOP, 22, span);
-    g.fillRect(EZ_RIGHT_START + 18 + i * 64, SIDELINE_TOP, 22, span);
+  for (let i = 0; i < 6; i += 1) {
+    g.fillStyle(0x0e3d22, 0.55);
+    g.fillRect(PITCH_LEFT + 28 + i * 80, SIDELINE_TOP, 18, span);
+    g.fillRect(EZ_RIGHT_START + 36 + i * 80, SIDELINE_TOP, 18, span);
   }
 
   g.fillStyle(0x163222, 1);
@@ -355,7 +336,7 @@ export function paintPitch(g: Phaser.GameObjects.Graphics): void {
 
   g.lineStyle(3, 0xf4f7ee, 0.95);
   g.strokeRect(PITCH_LEFT, SIDELINE_TOP, PITCH_RIGHT - PITCH_LEFT, span);
-  g.lineStyle(6, 0xff4d3a, 1);
+  g.lineStyle(10, 0xff4d3a, 1);
   g.lineBetween(EZ_LEFT_END, SIDELINE_TOP, EZ_LEFT_END, SIDELINE_BOT);
   g.lineBetween(EZ_RIGHT_START, SIDELINE_TOP, EZ_RIGHT_START, SIDELINE_BOT);
   paintPylon(g, EZ_LEFT_END, SIDELINE_TOP);
@@ -376,7 +357,7 @@ export function paintPitch(g: Phaser.GameObjects.Graphics): void {
     g.lineBetween(x, midY - 78, x, midY - 64);
     g.lineBetween(x, midY + 64, x, midY + 78);
     if (major) {
-      const label = String(yards);
+      const label = String(Math.min(yards, 70 - yards));
       const nx = x - textWidth(label, 6) / 2;
       drawBit(g, label, nx + 2, SIDELINE_TOP + 28, 0x0c2414, 6, 0.4);
       drawBit(g, label, nx, SIDELINE_TOP + 26, 0xf7f4ea, 6, 0.48);
@@ -385,9 +366,18 @@ export function paintPitch(g: Phaser.GameObjects.Graphics): void {
     }
   }
   paintMidfieldMark(g, EZ_LEFT_END + 35 * YARD, midY);
+  paintEndZoneLabel(g, EZ_LEFT_END, midY, 'left');
+  paintEndZoneLabel(g, EZ_RIGHT_START, midY, 'right');
+}
+
+function paintEndZoneLabel(g: Phaser.GameObjects.Graphics, goal: number, midY: number, side: 'left' | 'right'): void {
   const zone = 'END ZONE';
-  drawBit(g, zone, PITCH_LEFT + (EZ_LEFT_END - PITCH_LEFT - textWidth(zone, 3)) / 2, midY - 8, 0xf4f7ee, 3, 0.72);
-  drawBit(g, zone, EZ_RIGHT_START + (PITCH_RIGHT - EZ_RIGHT_START - textWidth(zone, 3)) / 2, midY - 8, 0xf4f7ee, 3, 0.72);
+  const scale = 4;
+  const width = textWidth(zone, scale);
+  const x = side === 'right' ? goal + 24 : goal - width - 24;
+  drawBit(g, zone, x + 2, midY - 18, 0x07140c, scale, 0.55);
+  drawBit(g, zone, x, midY - 20, 0xfff6e4, scale, 1);
+  drawBit(g, 'SCORE', x + (width - textWidth('SCORE', 3)) / 2, midY + 18, 0xffe14a, 3, 1);
 }
 
 function paintPylon(g: Phaser.GameObjects.Graphics, x: number, y: number): void {

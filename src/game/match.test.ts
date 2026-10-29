@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EZ_RIGHT_START } from './field';
 import { createMatch, launch, spot, step, type FrameInput, type Match } from './match';
 import { flightFromPlan, flightTo } from './throw';
 
@@ -81,6 +82,50 @@ describe('slingshot and catch', () => {
     launch(match, flightTo({ x: thrower.x, y: thrower.y }, spot, 'floater', 0), holder);
     for (let i = 0; i < 130; i += 1) step(match, 1 / 60, idle);
     expect(match.message).toBe('INCOMPLETE');
+  });
+});
+
+describe('end zone', () => {
+  it('scores when the disc is caught in the end zone', () => {
+    const match = fresh();
+    const holder = match.disc.holder;
+    const thrower = match.players[holder]!;
+    const spotAt = { x: EZ_RIGHT_START + 60, y: thrower.y };
+    park(match, [holder, 0]);
+    const receiver = match.players[0]!;
+    receiver.route = 'thrower';
+    receiver.x = spotAt.x;
+    receiver.y = spotAt.y;
+    receiver.homeX = spotAt.x;
+    receiver.homeY = spotAt.y;
+    launch(match, flightTo({ x: thrower.x, y: thrower.y }, spotAt, 'floater', 0), holder);
+    for (let i = 0; i < 140; i += 1) {
+      step(match, 1 / 60, idle);
+      if (match.message === 'GOAL') break;
+    }
+    expect(match.message).toBe('GOAL');
+    expect(match.score[0]).toBe(1);
+  });
+
+  it('does not score a catch short of the goal line', () => {
+    const match = fresh();
+    const holder = match.disc.holder;
+    const thrower = match.players[holder]!;
+    const spotAt = { x: EZ_RIGHT_START - 90, y: thrower.y };
+    park(match, [holder, 0]);
+    const receiver = match.players[0]!;
+    receiver.route = 'thrower';
+    receiver.x = spotAt.x;
+    receiver.y = spotAt.y;
+    receiver.homeX = spotAt.x;
+    receiver.homeY = spotAt.y;
+    launch(match, flightTo({ x: thrower.x, y: thrower.y }, spotAt, 'floater', 0), holder);
+    for (let i = 0; i < 140; i += 1) {
+      step(match, 1 / 60, idle);
+      if (match.disc.mode === 'held') break;
+    }
+    expect(match.message).toBe('CATCH');
+    expect(match.score[0]).toBe(0);
   });
 });
 

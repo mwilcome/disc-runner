@@ -448,7 +448,7 @@ function catchDisc(match: Match, index: number, x: number): void {
   match.stall = 8;
   match.liveT = 0;
   match.aiWait = 0;
-  if (isEndZone(x, dir) || isEndZone(catcher.x, dir)) {
+  if (isEndZone(x, dir)) {
     celebrate(match, 'goal', 'GOAL');
     return;
   }

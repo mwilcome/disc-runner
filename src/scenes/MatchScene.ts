@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { blip } from '../audio';
 import { athleteKey, buildTextures, drawBit, paintPitch, textWidth } from '../game/art';
 import { SQUADS, loadCareer, opponentIndex } from '../game/career';
-import { VIEW_H, VIEW_W, WORLD_W } from '../game/field';
+import { EZ_LEFT_END, EZ_RIGHT_START, VIEW_H, VIEW_W, WORLD_W } from '../game/field';
 import {
   IDLE,
   attackOf,
@@ -167,17 +167,28 @@ export class MatchScene extends Phaser.Scene {
 
   private frameCamera(): number {
     const disc = this.match.disc.x;
-    let sum = disc;
-    let n = 1;
-    for (const p of this.match.players) {
-      if (Math.abs(p.x - disc) < 720) {
-        sum += p.x;
-        n += 1;
+    const dir = attackOf(this.match);
+    const goal = dir > 0 ? EZ_RIGHT_START : EZ_LEFT_END;
+    const nearGoal = dir > 0 ? disc >= goal - 560 : disc <= goal + 560;
+    const showGoal = this.match.message === 'GOAL' || nearGoal;
+    let target: number;
+    if (showGoal) {
+      const lineAt = dir > 0 ? 0.68 : 0.32;
+      target = goal - VIEW_W * lineAt;
+    } else {
+      let sum = disc;
+      let n = 1;
+      for (const p of this.match.players) {
+        if (Math.abs(p.x - disc) < 520) {
+          sum += p.x;
+          n += 1;
+        }
       }
+      const focus = disc * 0.72 + sum / n * 0.28;
+      const bias = dir > 0 ? 0.4 : 0.6;
+      target = focus - VIEW_W * bias;
     }
-    const mid = sum / n;
-    const focus = disc * 0.62 + mid * 0.38;
-    const target = Phaser.Math.Clamp(focus - VIEW_W * 0.48, 0, WORLD_W - VIEW_W);
+    target = Phaser.Math.Clamp(target, 0, WORLD_W - VIEW_W);
     const gap = target - this.cameras.main.scrollX;
     return this.cameras.main.scrollX + (Math.abs(gap) > 640 ? gap : gap * 0.2);
   }
