@@ -85,7 +85,19 @@ export function shouldOfferChromeCollapse(args: {
 }
 
 export function swipeUp(dx: number, dy: number, min = 36): boolean {
-  return dy < -min && Math.abs(dy) > Math.abs(dx);
+  return dy < -min && Math.abs(dy) > Math.abs(dx) * 1.4;
+}
+
+/** True only for the swipe that hides browser chrome. A throw drag stays with the game. */
+export function shouldYieldTouchToBrowser(args: {
+  chromeOpen?: boolean;
+  wantsFullscreen?: boolean;
+  dx: number;
+  dy: number;
+}): boolean {
+  if (args.chromeOpen && swipeUp(args.dx, args.dy, 18)) return true;
+  if (args.wantsFullscreen && swipeUp(args.dx, args.dy, 56)) return true;
+  return false;
 }
 
 type FullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
@@ -155,22 +167,23 @@ export function installViewport(doc: Document = document, win: Window = window):
     }
     const width = win.innerWidth || 0;
     const height = win.innerHeight || 0;
-    root.classList.toggle('ios-scroll', shouldKeepSafariScroll({ iphone, standalone, width, height }));
+    const chromeOpen = safariChromeOpen({
+      standalone,
+      width,
+      height,
+      vvHeight: frame?.height ?? height,
+      vvOffsetTop: frame?.top ?? 0,
+      screenWidth: win.screen?.width || 0,
+      screenHeight: win.screen?.height || 0,
+    });
     const chrome = shouldOfferChromeCollapse({
       iphone,
       android,
       standalone,
       fullscreen,
-      chromeOpen: safariChromeOpen({
-        standalone,
-        width,
-        height,
-        vvHeight: frame?.height ?? height,
-        vvOffsetTop: frame?.top ?? 0,
-        screenWidth: win.screen?.width || 0,
-        screenHeight: win.screen?.height || 0,
-      }),
+      chromeOpen,
     });
+    root.classList.toggle('ios-scroll', shouldKeepSafariScroll({ iphone, standalone, width, height }) && chrome);
     root.classList.toggle('chrome-open', chrome);
   };
 
@@ -180,31 +193,27 @@ export function installViewport(doc: Document = document, win: Window = window):
     startX = touch.clientX;
     startY = touch.clientY;
     armFullscreen = false;
-    if (root.classList.contains('chrome-open')) root.classList.add('chrome-gesture');
   };
   const onMove = (event: TouchEvent) => {
     const touch = event.touches[0];
-    if (!touch) return;
+    if (!touch || event.touches.length !== 1) return;
     const dx = touch.clientX - startX;
     const dy = touch.clientY - startY;
-    const collapse = root.classList.contains('ios-scroll') && root.classList.contains('chrome-open') && swipeUp(dx, dy, 10);
-    const fullscreen = shouldRequestFullscreen({
+    const wantsFullscreen = shouldRequestFullscreen({
       android,
       standalone: root.classList.contains('standalone'),
       fullscreen: fullscreenNow(),
-    }) && swipeUp(dx, dy, 28);
-    if (collapse) {
-      root.classList.add('chrome-gesture');
-      event.stopImmediatePropagation();
-      return;
-    }
-    if (fullscreen) {
-      armFullscreen = true;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-    if (event.cancelable) event.preventDefault();
+    });
+    if (!shouldYieldTouchToBrowser({
+      chromeOpen: root.classList.contains('chrome-open') && root.classList.contains('ios-scroll'),
+      wantsFullscreen,
+      dx,
+      dy,
+    })) return;
+    root.classList.add('chrome-gesture');
+    if (wantsFullscreen) armFullscreen = true;
+    event.stopPropagation();
+    event.stopImmediatePropagation();
   };
   const onEnd = (event: TouchEvent) => {
     if (event.type === 'touchcancel' || event.touches.length === 0) root.classList.remove('chrome-gesture');

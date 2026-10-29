@@ -72,9 +72,10 @@ export interface FrameInput {
   flight: Flight | null;
   switchTo: number | null;
   lunge: boolean;
+  aiming: boolean;
 }
 
-export const IDLE: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false };
+export const IDLE: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false, aiming: false };
 
 /** Staggered depths so a snap reads as a play, not a drill line. */
 const FORM: { x: number; y: number; route: RouteId }[] = [
@@ -288,7 +289,7 @@ export function step(match: Match, dt: number, input: FrameInput): void {
   else maybeAiThrow(match);
   if (match.disc.mode === 'held') {
     syncHeld(match);
-    if (match.phase !== 'live') return;
+    if (match.phase !== 'live' || input.aiming) return;
     match.stall -= dt;
     if (match.stall <= 0) {
       turnover(match, 'STALL');

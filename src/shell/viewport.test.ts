@@ -6,6 +6,7 @@ import {
   shouldKeepSafariScroll,
   shouldOfferChromeCollapse,
   shouldRequestFullscreen,
+  shouldYieldTouchToBrowser,
   swipeUp,
   visualFrame,
 } from './viewport';
@@ -46,6 +47,10 @@ describe('landscape shell', () => {
     expect(shouldOfferChromeCollapse({ android: true, standalone: false, fullscreen: false })).toBe(true);
     expect(swipeUp(10, -80)).toBe(true);
     expect(swipeUp(-80, -10)).toBe(false);
+    expect(shouldYieldTouchToBrowser({ chromeOpen: true, dx: -120, dy: -8 })).toBe(false);
+    expect(shouldYieldTouchToBrowser({ chromeOpen: true, dx: 4, dy: -70 })).toBe(true);
+    expect(shouldYieldTouchToBrowser({ wantsFullscreen: true, dx: -90, dy: -20 })).toBe(false);
+    expect(shouldYieldTouchToBrowser({ wantsFullscreen: true, dx: 6, dy: -80 })).toBe(true);
     expect(
       safariChromeOpen({
         standalone: true,

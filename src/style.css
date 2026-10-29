@@ -31,10 +31,10 @@ html.ios-scroll, html.ios-scroll body {
 
 html.ios-scroll #chrome-spacer { display: block; }
 
-html.chrome-open,
-html.chrome-open body,
-html.chrome-open #app,
-html.chrome-open #app canvas {
+html.chrome-gesture,
+html.chrome-gesture body,
+html.chrome-gesture #app,
+html.chrome-gesture #app canvas {
   touch-action: pan-y;
 }
 

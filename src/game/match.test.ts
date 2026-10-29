@@ -3,7 +3,7 @@ import { EZ_RIGHT_START } from './field';
 import { createMatch, launch, spot, step, type FrameInput, type Match } from './match';
 import { flightFromPlan, flightTo } from './throw';
 
-const idle: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false };
+const idle: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false, aiming: false };
 
 function fresh(): Match {
   return createMatch({
@@ -134,9 +134,19 @@ describe('roles and coverage', () => {
     const match = fresh();
     const holder = match.disc.holder;
     const x = match.players[holder]!.x;
-    step(match, 0.2, { moveX: 1, moveY: 0, flight: null, switchTo: 0, lunge: false });
+    step(match, 0.2, { moveX: 1, moveY: 0, flight: null, switchTo: 0, lunge: false, aiming: false });
     expect(match.control).toBe(holder);
     expect(match.players[holder]!.x).toBeCloseTo(x, 0);
+  });
+
+  it('holds the stall while the throw is being aimed', () => {
+    const match = fresh();
+    for (let i = 0; i < 70; i += 1) step(match, 1 / 60, idle);
+    expect(match.phase).toBe('live');
+    const stall = match.stall;
+    step(match, 1.2, { ...idle, aiming: true });
+    expect(match.stall).toBeCloseTo(stall, 5);
+    expect(match.disc.mode).toBe('held');
   });
 
   it('moves receivers on their routes while the thrower is planted', () => {
@@ -157,7 +167,7 @@ describe('roles and coverage', () => {
     spot(match, 2000);
     expect(match.control).toBe(3);
     const before = match.players[1]!.x;
-    step(match, 0.35, { moveX: 1, moveY: 0, flight: null, switchTo: 1, lunge: false });
+    step(match, 0.35, { moveX: 1, moveY: 0, flight: null, switchTo: 1, lunge: false, aiming: false });
     expect(match.control).toBe(1);
     expect(match.players[1]!.x).toBeGreaterThan(before + 5);
   });

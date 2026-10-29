@@ -112,6 +112,7 @@ export class MatchScene extends Phaser.Scene {
         l: kb.addKey(Phaser.Input.Keyboard.KeyCodes.L),
       };
     }
+    this.input.addPointer(2);
     this.input.mouse?.disableContextMenu();
     this.born = this.time.now;
     this.input.on('pointerdown', this.onDown, this);
@@ -214,6 +215,7 @@ export class MatchScene extends Phaser.Scene {
       flight: null,
       switchTo: null,
       lunge: offense ? false : this.lunge,
+      aiming: offense && this.drag !== null,
     };
   }
 

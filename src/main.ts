@@ -24,6 +24,7 @@ const game = new Phaser.Game({
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   input: {
+    activePointers: 3,
     mouse: {
       preventDefaultWheel: true,
     },
