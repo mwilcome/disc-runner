@@ -301,11 +301,13 @@ export class MatchScene extends Phaser.Scene {
       if (p.lunge > 0) pose = 'dive';
       else if (i === this.catchWho && time < this.catchUntil) pose = 'catch';
       else if (hasDisc) pose = 'throw';
-      else if (moving(i)) pose = Math.floor(time / 90) % 2 === 0 ? 'run0' : 'run1';
+      else if (moving(i)) pose = Math.floor(time / 140) % 2 === 0 ? 'run0' : 'run1';
       sprite.setTexture(athleteKey(p.squad, pose, p.hair));
-      sprite.setPosition(Math.round(p.x), Math.round(p.y));
+      sprite.setPosition(p.x, p.y);
       sprite.setDepth(10 + p.y / 1000);
-      const faceLeft = Math.abs(p.vx) > 12 ? p.vx < 0 : p.team === this.match.poss ? attackOf(this.match) < 0 : attackOf(this.match) > 0;
+      const faceLeft = i === this.match.control && Math.abs(p.vx) > 20
+        ? p.vx < 0
+        : attackOf(this.match) < 0;
       sprite.setFlipX(faceLeft);
       const base = i === this.match.control ? 3.35 : 3.15;
       const pop = i === this.catchWho && time < this.catchUntil ? 1 + Math.sin((this.catchUntil - time) / 80) * 0.08 : 1;
@@ -318,24 +320,23 @@ export class MatchScene extends Phaser.Scene {
       }
     });
     const flying = this.match.disc.mode === 'flight';
-    const lift = this.match.disc.z * 58;
-    const rate = this.match.disc.kind === 'flick' ? 17 : 8.5;
-    const wobble = flying ? 0.65 + 0.35 * Math.abs(Math.sin(this.match.disc.age * rate)) : 0.8;
-    const spin = flying ? this.match.disc.age * (this.match.disc.kind === 'flick' ? 420 : 260) : attackOf(this.match) > 0 ? 16 : 164;
+    const lift = this.match.disc.z * 64;
+    const spin = this.match.disc.age * (this.match.disc.kind === 'flick' ? 520 : 280);
     this.trail.unshift({ x: this.match.disc.x, y: this.match.disc.y - lift });
-    this.trail.length = 5;
+    this.trail.length = 6;
     this.ghosts.forEach((ghost, i) => {
       const bit = this.trail[i + 1];
       const show = flying && bit;
       ghost.setVisible(!!show);
       if (!show || !bit) return;
       ghost.setPosition(bit.x, bit.y);
-      ghost.setAngle(spin - (i + 1) * 36);
-      ghost.setScale(3.1, 1.05 + wobble * 0.45);
+      ghost.setAngle(spin);
+      ghost.setScale(3.2, 1.45);
+      ghost.setAlpha(0.22 - i * 0.03);
     });
     this.disc.setPosition(this.match.disc.x, this.match.disc.y - lift);
-    this.disc.setAngle(spin);
-    this.disc.setScale(3.6, flying ? 1.25 + wobble * 0.7 : 1.45);
+    this.disc.setAngle(flying ? spin : attackOf(this.match) > 0 ? 12 : 168);
+    this.disc.setScale(3.5, 1.5);
     this.discShadow.setPosition(this.match.disc.x, this.match.disc.y + 4);
     this.discShadow.setAlpha(flying ? 0.45 * (1 - Math.min(this.match.disc.z, 1.6) / 2.2) : 0.4);
     this.discShadow.setScale(3.4 + this.match.disc.z * 1.1, 1.3);

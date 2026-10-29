@@ -98,10 +98,12 @@ describe('roles and coverage', () => {
     const match = fresh();
     const deep = match.players[5]!;
     const before = deep.x;
+    const lane = deep.y;
     for (let i = 0; i < 40; i += 1) step(match, 1 / 60, idle);
     expect(match.phase).toBe('ready');
     expect(match.clock).toBe(60);
     expect(deep.x).toBeGreaterThan(before + 20);
+    expect(Math.abs(deep.y - lane)).toBeLessThan(40);
   });
 
   it('switches the controlled runner on defense', () => {

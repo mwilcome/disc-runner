@@ -25,12 +25,9 @@ const game = new Phaser.Game({
   },
   input: {
     mouse: {
-      preventDefaultDown: true,
-      preventDefaultUp: true,
-      preventDefaultMove: true,
       preventDefaultWheel: true,
     },
-    touch: { capture: true },
+    touch: { capture: false },
   },
   render: { antialias: false, pixelArt: true, roundPixels: true },
   scene: [TitleScene, HubScene, ShopScene, MatchScene, ResultScene],

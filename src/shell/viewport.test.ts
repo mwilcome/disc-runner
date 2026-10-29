@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { isIphone, safariChromeOpen, shouldOfferChromeCollapse, visualFrame } from './viewport';
+import {
+  isAndroid,
+  isIphone,
+  safariChromeOpen,
+  shouldKeepSafariScroll,
+  shouldOfferChromeCollapse,
+  shouldRequestFullscreen,
+  swipeUp,
+  visualFrame,
+} from './viewport';
 
 describe('landscape shell', () => {
   it('detects an iPhone and a usable visual frame', () => {
@@ -27,6 +36,16 @@ describe('landscape shell', () => {
     expect(chromeOpen).toBe(true);
     expect(shouldOfferChromeCollapse({ iphone: true, standalone: false, chromeOpen })).toBe(true);
     expect(shouldOfferChromeCollapse({ iphone: true, standalone: true, chromeOpen })).toBe(false);
+    expect(isAndroid('Mozilla/5.0 (Linux; Android 14; Pixel 8)')).toBe(true);
+    expect(isAndroid('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(false);
+    expect(shouldRequestFullscreen({ android: true, standalone: false, fullscreen: false })).toBe(true);
+    expect(shouldRequestFullscreen({ android: true, fullscreen: true })).toBe(false);
+    expect(shouldRequestFullscreen({ android: false })).toBe(false);
+    expect(shouldKeepSafariScroll({ iphone: true, standalone: false, width: 800, height: 340 })).toBe(true);
+    expect(shouldKeepSafariScroll({ iphone: true, width: 340, height: 800 })).toBe(false);
+    expect(shouldOfferChromeCollapse({ android: true, standalone: false, fullscreen: false })).toBe(true);
+    expect(swipeUp(10, -80)).toBe(true);
+    expect(swipeUp(-80, -10)).toBe(false);
     expect(
       safariChromeOpen({
         standalone: true,

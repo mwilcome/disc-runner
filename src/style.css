@@ -20,8 +20,22 @@ html, body {
 }
 
 html.ios-scroll, html.ios-scroll body {
-  height: 140%;
+  height: 160%;
   overflow: auto;
+}
+
+#chrome-spacer {
+  display: none;
+  height: 120px;
+}
+
+html.ios-scroll #chrome-spacer { display: block; }
+
+html.chrome-open,
+html.chrome-open body,
+html.chrome-open #app,
+html.chrome-open #app canvas {
+  touch-action: pan-y;
 }
 
 #app {

@@ -323,30 +323,27 @@ function movePeople(match: Match, dt: number, input: FrameInput): void {
     }
     if (controlled) {
       const sp = moverSpeed(match, p.team);
+      const band = 78;
       p.vx = input.moveX * sp;
       p.vy = input.moveY * sp;
       p.x += p.vx * dt;
-      p.y += p.vy * dt;
+      const nextY = p.y + p.vy * dt;
+      p.y = clamp(nextY, p.homeY - band, p.homeY + band);
       p.y = clamp(p.y, SIDELINE_TOP + 8, SIDELINE_BOT - 8);
       continue;
     }
     if (offense) {
-      const dest = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, routeClock(match.routeT), routeSpeed(level));
-      dest.y = clamp(dest.y + Math.sin(match.routeT * 4 + i) * 14, SIDELINE_TOP + 28, SIDELINE_BOT - 28);
-      steer(p, dest.x, dest.y, routeSpeed(level), dt);
+      const raw = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, Math.min(match.routeT, 1.2), routeSpeed(level));
+      const destY = clamp(raw.y, p.homeY - LANE, p.homeY + LANE);
+      steer(p, raw.x, destY, routeSpeed(level) * 0.92, dt);
       continue;
     }
-    const gx = p.homeX + Math.sin(match.routeT * 0.9 + i) * 26;
-    const gy = p.homeY + Math.cos(match.routeT * 0.7 + i * 0.6) * 18;
-    steer(p, gx, clamp(gy, SIDELINE_TOP + 36, SIDELINE_BOT - 36), 70, dt);
+    const shade = dir * Math.min(match.routeT, 1.2) * 80;
+    steer(p, p.homeX + shade, p.homeY, 110, dt);
   }
 }
 
-function routeClock(t: number): number {
-  const span = 1.8;
-  const phase = t % (span * 2);
-  return phase <= span ? phase : span * 2 - phase;
-}
+const LANE = 36;
 
 function steer(p: Athlete, x: number, y: number, speed: number, dt: number): void {
   const dx = x - p.x;
