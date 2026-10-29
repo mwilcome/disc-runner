@@ -88,16 +88,9 @@ export function swipeUp(dx: number, dy: number, min = 36): boolean {
   return dy < -min && Math.abs(dy) > Math.abs(dx) * 1.4;
 }
 
-/** True only for the swipe that hides browser chrome. A throw drag stays with the game. */
-export function shouldYieldTouchToBrowser(args: {
-  chromeOpen?: boolean;
-  wantsFullscreen?: boolean;
-  dx: number;
-  dy: number;
-}): boolean {
-  if (args.chromeOpen && swipeUp(args.dx, args.dy, 18)) return true;
-  if (args.wantsFullscreen && swipeUp(args.dx, args.dy, 56)) return true;
-  return false;
+/** Upward swipe on the bottom bar, not a slingshot drag on the field. */
+export function dockSwipe(dx: number, dy: number): boolean {
+  return swipeUp(dx, dy, 28);
 }
 
 type FullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
@@ -139,9 +132,10 @@ export function installViewport(doc: Document = document, win: Window = window):
     return Boolean(doc.fullscreenElement || anyDoc.webkitFullscreenElement);
   };
 
-  let startX = 0;
-  let startY = 0;
-  let armFullscreen = false;
+  let chromeLocked = false;
+  let scheduled = false;
+  let dockX = 0;
+  let dockY = 0;
 
   const apply = () => {
     const nav = win.navigator as Navigator & { standalone?: boolean };
@@ -154,19 +148,27 @@ export function installViewport(doc: Document = document, win: Window = window):
     const frame = win.visualViewport ? visualFrame(win.visualViewport) : null;
     const pin = Boolean(ios && !standalone && frame);
     root.classList.toggle('vv', pin);
+    const setVar = (name: string, value: string | null) => {
+      if (value == null) {
+        if (root.style.getPropertyValue(name)) root.style.removeProperty(name);
+        return;
+      }
+      if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value);
+    };
     if (!pin || !frame) {
-      root.style.removeProperty('--vv-top');
-      root.style.removeProperty('--vv-left');
-      root.style.removeProperty('--vv-width');
-      root.style.removeProperty('--vv-height');
+      setVar('--vv-top', null);
+      setVar('--vv-left', null);
+      setVar('--vv-width', null);
+      setVar('--vv-height', null);
     } else {
-      root.style.setProperty('--vv-top', `${frame.top}px`);
-      root.style.setProperty('--vv-left', `${frame.left}px`);
-      root.style.setProperty('--vv-width', `${frame.width}px`);
-      root.style.setProperty('--vv-height', `${frame.height}px`);
+      setVar('--vv-top', `${frame.top}px`);
+      setVar('--vv-left', `${frame.left}px`);
+      setVar('--vv-width', `${frame.width}px`);
+      setVar('--vv-height', `${frame.height}px`);
     }
     const width = win.innerWidth || 0;
     const height = win.innerHeight || 0;
+    const landscape = width > height;
     const chromeOpen = safariChromeOpen({
       standalone,
       width,
@@ -176,65 +178,55 @@ export function installViewport(doc: Document = document, win: Window = window):
       screenWidth: win.screen?.width || 0,
       screenHeight: win.screen?.height || 0,
     });
-    const chrome = shouldOfferChromeCollapse({
+    if (!landscape || !iphone) chromeLocked = false;
+    else if (!chromeOpen || fullscreen) chromeLocked = true;
+    const chrome = !chromeLocked && shouldOfferChromeCollapse({
       iphone,
       android,
       standalone,
       fullscreen,
       chromeOpen,
     });
-    root.classList.toggle('ios-scroll', shouldKeepSafariScroll({ iphone, standalone, width, height }) && chrome);
+    const scrolling = shouldKeepSafariScroll({ iphone, standalone, width, height }) && chrome;
+    root.classList.toggle('ios-scroll', scrolling);
     root.classList.toggle('chrome-open', chrome);
+    root.classList.toggle('chrome-locked', chromeLocked && landscape && !fullscreen && !standalone);
   };
 
-  const onStart = (event: TouchEvent) => {
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    win.requestAnimationFrame(() => {
+      scheduled = false;
+      apply();
+    });
+  };
+
+  const dock = doc.getElementById('chrome-dock');
+  dock?.addEventListener('touchstart', (event) => {
     const touch = event.touches[0];
     if (!touch) return;
-    startX = touch.clientX;
-    startY = touch.clientY;
-    armFullscreen = false;
-  };
-  const onMove = (event: TouchEvent) => {
-    const touch = event.touches[0];
-    if (!touch || event.touches.length !== 1) return;
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-    const wantsFullscreen = shouldRequestFullscreen({
-      android,
-      standalone: root.classList.contains('standalone'),
-      fullscreen: fullscreenNow(),
-    });
-    if (!shouldYieldTouchToBrowser({
-      chromeOpen: root.classList.contains('chrome-open') && root.classList.contains('ios-scroll'),
-      wantsFullscreen,
-      dx,
-      dy,
-    })) return;
-    root.classList.add('chrome-gesture');
-    if (wantsFullscreen) armFullscreen = true;
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-  };
-  const onEnd = (event: TouchEvent) => {
-    if (event.type === 'touchcancel' || event.touches.length === 0) root.classList.remove('chrome-gesture');
-    if (armFullscreen) {
-      armFullscreen = false;
-      void enterFullscreen(doc, win).then(apply);
-    }
-  };
+    dockX = touch.clientX;
+    dockY = touch.clientY;
+  }, { passive: true });
+  dock?.addEventListener('touchend', (event) => {
+    const touch = event.changedTouches[0];
+    if (!touch || !root.classList.contains('ios-scroll')) return;
+    const dx = touch.clientX - dockX;
+    const dy = touch.clientY - dockY;
+    if (!dockSwipe(dx, dy) || win.scrollY > 8) return;
+    win.scrollTo(0, 80);
+  }, { passive: true });
+  dock?.addEventListener('click', () => {
+    if (!shouldRequestFullscreen({ android, standalone: root.classList.contains('standalone'), fullscreen: fullscreenNow() })) return;
+    void enterFullscreen(doc, win).then(schedule);
+  });
 
   apply();
-  win.addEventListener('resize', apply);
-  win.addEventListener('orientationchange', apply);
-  doc.addEventListener('fullscreenchange', apply);
-  win.visualViewport?.addEventListener('resize', apply);
-  win.visualViewport?.addEventListener('scroll', apply);
-  doc.addEventListener('touchstart', onStart, { passive: true, capture: true });
-  doc.addEventListener('touchmove', onMove, { passive: false, capture: true });
-  doc.addEventListener('touchend', onEnd, { passive: true, capture: true });
-  doc.addEventListener('touchcancel', onEnd, { passive: true, capture: true });
-  const blockPinch = (event: Event) => event.preventDefault();
-  doc.addEventListener('gesturestart', blockPinch, { passive: false });
-  doc.addEventListener('gesturechange', blockPinch, { passive: false });
-  doc.addEventListener('contextmenu', blockPinch);
+  win.addEventListener('resize', schedule);
+  win.addEventListener('orientationchange', schedule);
+  doc.addEventListener('fullscreenchange', schedule);
+  win.visualViewport?.addEventListener('resize', schedule);
+  win.visualViewport?.addEventListener('scroll', schedule);
+  doc.addEventListener('contextmenu', (event) => event.preventDefault());
 }

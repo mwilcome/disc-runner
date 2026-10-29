@@ -15,6 +15,7 @@ import {
   type Match,
 } from '../game/match';
 import { MIN_PULL, dragToThrow, flightFromPlan, landingOf, releaseSpeed, sampleFlight, type DragSample, type Flight } from '../game/throw';
+import { clientToGame } from '../shell/touch';
 
 interface Drag {
   x0: number;
@@ -48,6 +49,7 @@ export class MatchScene extends Phaser.Scene {
   private lunge = false;
   private ended = false;
   private born = 0;
+  private finger: number | null = null;
   private keys?: {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
@@ -118,6 +120,64 @@ export class MatchScene extends Phaser.Scene {
     this.input.on('pointerdown', this.onDown, this);
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup', this.onUp, this);
+    this.bindFieldTouch();
+  }
+
+  private bindFieldTouch(): void {
+    const doc = this.game.canvas.ownerDocument;
+    const onStart = (event: TouchEvent) => this.onFieldStart(event);
+    const onMove = (event: TouchEvent) => this.onFieldMove(event);
+    const onEnd = (event: TouchEvent) => this.onFieldEnd(event);
+    doc.addEventListener('touchstart', onStart, { passive: false });
+    doc.addEventListener('touchmove', onMove, { passive: false });
+    doc.addEventListener('touchend', onEnd, { passive: false });
+    doc.addEventListener('touchcancel', onEnd, { passive: false });
+    this.events.once('shutdown', () => {
+      doc.removeEventListener('touchstart', onStart);
+      doc.removeEventListener('touchmove', onMove);
+      doc.removeEventListener('touchend', onEnd);
+      doc.removeEventListener('touchcancel', onEnd);
+      this.finger = null;
+      this.drag = null;
+    });
+  }
+
+  private onGameSurface(event: TouchEvent): boolean {
+    const app = this.game.canvas.parentElement;
+    const target = event.target;
+    return target instanceof Node && !!app && app.contains(target);
+  }
+
+  private pointFromClient(clientX: number, clientY: number): { x: number; y: number } {
+    const cam = this.cameras.main;
+    return clientToGame(clientX, clientY, this.game.canvas.getBoundingClientRect(), VIEW_W, VIEW_H, cam.scrollX, cam.scrollY);
+  }
+
+  private onFieldStart(event: TouchEvent): void {
+    if (this.finger != null || !this.onGameSurface(event)) return;
+    if (this.time.now - this.born < 400) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    this.finger = touch.identifier;
+    this.beginDrag(this.pointFromClient(touch.clientX, touch.clientY));
+  }
+
+  private onFieldMove(event: TouchEvent): void {
+    if (this.finger == null) return;
+    const touch = Array.from(event.touches).find((item) => item.identifier === this.finger);
+    if (!touch) return;
+    if (event.cancelable) event.preventDefault();
+    this.trackDrag(this.pointFromClient(touch.clientX, touch.clientY));
+  }
+
+  private onFieldEnd(event: TouchEvent): void {
+    if (this.finger == null) return;
+    const touch = Array.from(event.changedTouches).find((item) => item.identifier === this.finger);
+    if (!touch) return;
+    this.finger = null;
+    const at = this.pointFromClient(touch.clientX, touch.clientY);
+    this.trackDrag(at);
+    this.releaseDrag(at);
   }
 
   update(time: number, delta: number): void {
@@ -227,16 +287,13 @@ export class MatchScene extends Phaser.Scene {
     return { x: pointer.worldX, y: pointer.worldY };
   }
 
-  private onDown(pointer: Phaser.Input.Pointer): void {
-    if (this.time.now - this.born < 400) return;
+  private beginDrag(p: { x: number; y: number }): void {
     const now = this.time.now;
-    const p = this.at(pointer);
     this.drag = { x0: p.x, y0: p.y, x: p.x, y: p.y, t0: now, samples: [{ t: now, x: p.x, y: p.y }] };
   }
 
-  private onMove(pointer: Phaser.Input.Pointer): void {
+  private trackDrag(p: { x: number; y: number }): void {
     if (!this.drag) return;
-    const p = this.at(pointer);
     this.drag.x = p.x;
     this.drag.y = p.y;
     this.drag.samples.push({ t: this.time.now, x: p.x, y: p.y });
@@ -253,13 +310,12 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  private onUp(pointer: Phaser.Input.Pointer): void {
+  private releaseDrag(at: { x: number; y: number }): void {
     if (!this.drag) return;
     const drag = this.drag;
     this.drag = null;
-    const up = this.at(pointer);
-    const dx = drag.x - drag.x0;
-    const dy = drag.y - drag.y0;
+    const dx = at.x - drag.x0;
+    const dy = at.y - drag.y0;
     const len = Math.hypot(dx, dy);
     this.moveX = 0;
     this.moveY = 0;
@@ -278,7 +334,7 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (this.match.poss !== 1 || len > 48) return;
-    const hit = this.nearestUser(up.x, up.y);
+    const hit = this.nearestUser(at.x, at.y);
     if (hit < 0) return;
     if (hit === this.match.control && lungeReady(this.match)) {
       this.lunge = true;
@@ -286,6 +342,23 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (hit !== this.match.control) step(this.match, 0, { ...IDLE, switchTo: hit });
+  }
+
+  private onDown(pointer: Phaser.Input.Pointer): void {
+    if (pointer.wasTouch || this.time.now - this.born < 400) return;
+    this.beginDrag(this.at(pointer));
+  }
+
+  private onMove(pointer: Phaser.Input.Pointer): void {
+    if (pointer.wasTouch) return;
+    this.trackDrag(this.at(pointer));
+  }
+
+  private onUp(pointer: Phaser.Input.Pointer): void {
+    if (pointer.wasTouch) return;
+    const at = this.at(pointer);
+    this.trackDrag(at);
+    this.releaseDrag(at);
   }
 
   private nearestUser(x: number, y: number): number {

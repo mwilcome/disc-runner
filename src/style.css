@@ -2,6 +2,7 @@
   color-scheme: dark;
   --ink: #102418;
   --cream: #f4f0e0;
+  --dock: 84px;
 }
 
 * { box-sizing: border-box; }
@@ -19,29 +20,84 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-html.ios-scroll, html.ios-scroll body {
-  height: 160%;
+html.ios-scroll {
+  height: auto;
   overflow: auto;
+  touch-action: pan-y;
+  overscroll-behavior: auto;
+}
+
+html.ios-scroll body {
+  display: flow-root;
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+  touch-action: pan-y;
+  padding-top: calc(var(--vv-top, 0px) + var(--vv-height, 100dvh) - var(--dock));
+}
+
+html.chrome-locked,
+html.chrome-locked body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 #chrome-spacer {
   display: none;
-  height: 120px;
+  height: 100vh;
 }
 
 html.ios-scroll #chrome-spacer { display: block; }
 
-html.chrome-gesture,
-html.chrome-gesture body,
-html.chrome-gesture #app,
-html.chrome-gesture #app canvas {
+#chrome-dock {
+  display: none;
+  box-sizing: border-box;
+  height: var(--dock);
+  align-items: center;
+  justify-content: center;
+  background: #ffd15c;
+  color: #102418;
+  font: 700 16px/1.2 system-ui, sans-serif;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 6;
+}
+
+html.chrome-open #chrome-dock {
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  touch-action: manipulation;
+}
+
+html.ios-scroll #chrome-dock {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  margin-top: 0;
   touch-action: pan-y;
 }
 
 #app {
   position: fixed;
   inset: 0;
+  z-index: 1;
   touch-action: none;
+}
+
+html.ios-scroll #app {
+  bottom: var(--dock);
 }
 
 html.vv #app {
@@ -51,6 +107,10 @@ html.vv #app {
   height: var(--vv-height);
   right: auto;
   bottom: auto;
+}
+
+html.vv.ios-scroll #app {
+  height: calc(var(--vv-height) - var(--dock));
 }
 
 #app canvas {
@@ -86,21 +146,6 @@ html.vv #app {
 
 @media (orientation: portrait) and (max-width: 900px) {
   #rotate-gate { display: flex; }
-  #app, #chrome-hint { visibility: hidden; }
+  #app, #chrome-dock { visibility: hidden; }
 }
 
-#chrome-hint {
-  display: none;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 10px;
-  z-index: 30;
-  margin: 0;
-  text-align: center;
-  color: var(--cream);
-  font: 600 14px/1.2 system-ui, sans-serif;
-  pointer-events: none;
-}
-
-html.chrome-open #chrome-hint { display: block; }
