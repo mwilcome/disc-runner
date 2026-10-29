@@ -1,4 +1,10 @@
-/** Landscape shell. iPhone Safari has no page fullscreen; scrolling collapses the toolbars. */
+/**
+ * Landscape shell. iPhone Safari has no page fullscreen. The toolbars collapse
+ * only when the viewport itself scrolls, which is what Mars Tanks does: a tall
+ * document, overflow visible, and no preventDefault while the bars are open.
+ */
+
+const COLLAPSE_QUIET_MS = 600;
 
 export const SAFARI_CHROME_GAP = 40;
 
@@ -84,13 +90,14 @@ export function shouldOfferChromeCollapse(args: {
   return Boolean(args.iphone && args.chromeOpen);
 }
 
-export function swipeUp(dx: number, dy: number, min = 36): boolean {
-  return dy < -min && Math.abs(dy) > Math.abs(dx) * 1.4;
+/** While Safari's bars are up, a touch must be allowed to scroll the viewport. */
+export function safariOwnsSwipe(args: { chromeOpen?: boolean; gesturing?: boolean } = {}): boolean {
+  return Boolean(args.chromeOpen || args.gesturing);
 }
 
-/** Upward swipe on the bottom bar, not a slingshot drag on the field. */
-export function dockSwipe(dx: number, dy: number): boolean {
-  return swipeUp(dx, dy, 28);
+/** An upward swipe that is hiding the browser should not also throw the disc. */
+export function shouldDropThrowForChrome(args: { chromeGesture?: boolean; dx: number; dy: number }): boolean {
+  return Boolean(args.chromeGesture && args.dy < -24 && Math.abs(args.dy) > Math.abs(args.dx));
 }
 
 type FullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
@@ -132,10 +139,10 @@ export function installViewport(doc: Document = document, win: Window = window):
     return Boolean(doc.fullscreenElement || anyDoc.webkitFullscreenElement);
   };
 
-  let chromeLocked = false;
   let scheduled = false;
-  let dockX = 0;
-  let dockY = 0;
+  let wasOpen = false;
+  let quietUntil = 0;
+  let askedFullscreen = false;
 
   const apply = () => {
     const nav = win.navigator as Navigator & { standalone?: boolean };
@@ -168,29 +175,25 @@ export function installViewport(doc: Document = document, win: Window = window):
     }
     const width = win.innerWidth || 0;
     const height = win.innerHeight || 0;
-    const landscape = width > height;
-    const chromeOpen = safariChromeOpen({
-      standalone,
-      width,
-      height,
-      vvHeight: frame?.height ?? height,
-      vvOffsetTop: frame?.top ?? 0,
-      screenWidth: win.screen?.width || 0,
-      screenHeight: win.screen?.height || 0,
-    });
-    if (!landscape || !iphone) chromeLocked = false;
-    else if (!chromeOpen || fullscreen) chromeLocked = true;
-    const chrome = !chromeLocked && shouldOfferChromeCollapse({
+    const rawOpen = shouldOfferChromeCollapse({
       iphone,
-      android,
       standalone,
       fullscreen,
-      chromeOpen,
+      chromeOpen: safariChromeOpen({
+        standalone,
+        width,
+        height,
+        vvHeight: frame?.height ?? height,
+        vvOffsetTop: frame?.top ?? 0,
+        screenWidth: win.screen?.width || 0,
+        screenHeight: win.screen?.height || 0,
+      }),
     });
-    const scrolling = shouldKeepSafariScroll({ iphone, standalone, width, height }) && chrome;
-    root.classList.toggle('ios-scroll', scrolling);
-    root.classList.toggle('chrome-open', chrome);
-    root.classList.toggle('chrome-locked', chromeLocked && landscape && !fullscreen && !standalone);
+    const now = win.performance?.now?.() ?? Date.now();
+    if (wasOpen && !rawOpen) quietUntil = now + COLLAPSE_QUIET_MS;
+    wasOpen = rawOpen;
+    root.classList.toggle('ios-scroll', shouldKeepSafariScroll({ iphone, standalone, width, height }));
+    root.classList.toggle('chrome-open', rawOpen && now >= quietUntil);
   };
 
   const schedule = () => {
@@ -202,29 +205,37 @@ export function installViewport(doc: Document = document, win: Window = window):
     });
   };
 
-  const dock = doc.getElementById('chrome-dock');
-  dock?.addEventListener('touchstart', (event) => {
-    const touch = event.touches[0];
-    if (!touch) return;
-    dockX = touch.clientX;
-    dockY = touch.clientY;
-  }, { passive: true });
-  dock?.addEventListener('touchend', (event) => {
-    const touch = event.changedTouches[0];
-    if (!touch || !root.classList.contains('ios-scroll')) return;
-    const dx = touch.clientX - dockX;
-    const dy = touch.clientY - dockY;
-    if (!dockSwipe(dx, dy) || win.scrollY > 8) return;
-    win.scrollTo(0, 80);
-  }, { passive: true });
-  dock?.addEventListener('click', () => {
-    if (!shouldRequestFullscreen({ android, standalone: root.classList.contains('standalone'), fullscreen: fullscreenNow() })) return;
-    void enterFullscreen(doc, win).then(schedule);
+  const owns = () => safariOwnsSwipe({
+    chromeOpen: root.classList.contains('chrome-open'),
+    gesturing: root.classList.contains('chrome-gesture'),
   });
+
+  doc.addEventListener('touchstart', () => {
+    if (root.classList.contains('chrome-open')) root.classList.add('chrome-gesture');
+  }, { passive: true });
+  doc.addEventListener('touchmove', (event) => {
+    if (owns()) return;
+    if (event.cancelable) event.preventDefault();
+  }, { passive: false });
+  const endGesture = (event: TouchEvent) => {
+    if (event.type === 'touchcancel' || event.touches.length === 0) {
+      win.requestAnimationFrame(() => root.classList.remove('chrome-gesture'));
+    }
+    if (askedFullscreen) return;
+    if (!shouldRequestFullscreen({ android, standalone: root.classList.contains('standalone'), fullscreen: fullscreenNow() })) return;
+    askedFullscreen = true;
+    void enterFullscreen(doc, win).then(schedule);
+  };
+  doc.addEventListener('touchend', endGesture, { passive: true });
+  doc.addEventListener('touchcancel', endGesture, { passive: true });
+  const blockPinch = (event: Event) => event.preventDefault();
+  doc.addEventListener('gesturestart', blockPinch, { passive: false });
+  doc.addEventListener('gesturechange', blockPinch, { passive: false });
 
   apply();
   win.addEventListener('resize', schedule);
   win.addEventListener('orientationchange', schedule);
+  win.addEventListener('pageshow', schedule);
   doc.addEventListener('fullscreenchange', schedule);
   win.visualViewport?.addEventListener('resize', schedule);
   win.visualViewport?.addEventListener('scroll', schedule);

@@ -2,7 +2,6 @@
   color-scheme: dark;
   --ink: #102418;
   --cream: #f4f0e0;
-  --dock: 84px;
 }
 
 * { box-sizing: border-box; }
@@ -10,83 +9,40 @@
 html, body {
   margin: 0;
   height: 100%;
+  height: 100dvh;
   background: var(--ink);
   overflow: hidden;
   overscroll-behavior: none;
-  touch-action: none;
+  /* pan-y lets a swipe move the viewport. touch-action: none here would make
+     Safari keep its bars, because the bars only hide when the viewport scrolls. */
+  touch-action: pan-x pan-y;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Safari hides its toolbars when the viewport scrolls, not when an element
+   with overflow:auto scrolls. overflow-x: hidden would force overflow-y: auto. */
 html.ios-scroll {
   height: auto;
-  overflow: auto;
-  touch-action: pan-y;
+  overflow: visible;
   overscroll-behavior: auto;
 }
 
 html.ios-scroll body {
-  display: flow-root;
   height: auto;
-  min-height: 100%;
+  min-height: 0;
   overflow: visible;
-  touch-action: pan-y;
-  padding-top: calc(var(--vv-top, 0px) + var(--vv-height, 100dvh) - var(--dock));
 }
 
-html.chrome-locked,
-html.chrome-locked body {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  touch-action: none;
-  overscroll-behavior: none;
-}
+#chrome-spacer { display: none; }
 
-#chrome-spacer {
-  display: none;
-  height: 100vh;
-}
-
-html.ios-scroll #chrome-spacer { display: block; }
-
-#chrome-dock {
-  display: none;
-  box-sizing: border-box;
-  height: var(--dock);
-  align-items: center;
-  justify-content: center;
-  background: #ffd15c;
-  color: #102418;
-  font: 700 16px/1.2 system-ui, sans-serif;
-  text-align: center;
-  user-select: none;
-  -webkit-user-select: none;
-  z-index: 6;
-}
-
-html.chrome-open #chrome-dock {
-  display: flex;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  touch-action: manipulation;
-}
-
-html.ios-scroll #chrome-dock {
-  position: relative;
-  left: auto;
-  right: auto;
-  bottom: auto;
-  width: 100%;
-  margin-top: 0;
-  touch-action: pan-y;
+html.ios-scroll #chrome-spacer {
+  display: block;
+  width: 1px;
+  height: calc(100lvh + 160px);
+  pointer-events: none;
 }
 
 #app {
@@ -96,11 +52,15 @@ html.ios-scroll #chrome-dock {
   touch-action: none;
 }
 
-html.ios-scroll #app {
-  bottom: var(--dock);
+html.chrome-open #app,
+html.chrome-gesture #app,
+html.chrome-open #app canvas,
+html.chrome-gesture #app canvas {
+  touch-action: pan-y;
 }
 
-html.vv #app {
+html.vv #app,
+html.vv #rotate-gate {
   top: var(--vv-top);
   left: var(--vv-left);
   width: var(--vv-width);
@@ -109,16 +69,32 @@ html.vv #app {
   bottom: auto;
 }
 
-html.vv.ios-scroll #app {
-  height: calc(var(--vv-height) - var(--dock));
-}
-
 #app canvas {
   display: block;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
+
+#chrome-hint {
+  display: none;
+  position: fixed;
+  z-index: 30;
+  top: 46%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid #ffd15c;
+  background: rgba(0, 0, 0, 0.72);
+  color: #ffd15c;
+  font: 700 13px/1.2 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  text-align: center;
+  pointer-events: none;
+}
+
+html.chrome-open #chrome-hint { display: block; }
 
 #rotate-gate {
   display: none;
@@ -146,6 +122,6 @@ html.vv.ios-scroll #app {
 
 @media (orientation: portrait) and (max-width: 900px) {
   #rotate-gate { display: flex; }
-  #app, #chrome-dock { visibility: hidden; }
+  #app, #chrome-hint { visibility: hidden; }
 }
 

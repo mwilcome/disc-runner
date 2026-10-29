@@ -16,6 +16,7 @@ import {
 } from '../game/match';
 import { MIN_PULL, dragToThrow, flightFromPlan, landingOf, releaseSpeed, sampleFlight, type DragSample, type Flight } from '../game/throw';
 import { clientToGame } from '../shell/touch';
+import { shouldDropThrowForChrome } from '../shell/viewport';
 
 interface Drag {
   x0: number;
@@ -50,6 +51,8 @@ export class MatchScene extends Phaser.Scene {
   private ended = false;
   private born = 0;
   private finger: number | null = null;
+  private fingerX = 0;
+  private fingerY = 0;
   private keys?: {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
@@ -159,6 +162,8 @@ export class MatchScene extends Phaser.Scene {
     const touch = event.changedTouches[0];
     if (!touch) return;
     this.finger = touch.identifier;
+    this.fingerX = touch.clientX;
+    this.fingerY = touch.clientY;
     this.beginDrag(this.pointFromClient(touch.clientX, touch.clientY));
   }
 
@@ -166,7 +171,6 @@ export class MatchScene extends Phaser.Scene {
     if (this.finger == null) return;
     const touch = Array.from(event.touches).find((item) => item.identifier === this.finger);
     if (!touch) return;
-    if (event.cancelable) event.preventDefault();
     this.trackDrag(this.pointFromClient(touch.clientX, touch.clientY));
   }
 
@@ -174,7 +178,17 @@ export class MatchScene extends Phaser.Scene {
     if (this.finger == null) return;
     const touch = Array.from(event.changedTouches).find((item) => item.identifier === this.finger);
     if (!touch) return;
+    const dx = touch.clientX - this.fingerX;
+    const dy = touch.clientY - this.fingerY;
+    const root = this.game.canvas.ownerDocument.documentElement;
+    const chromeGesture = root.classList.contains('chrome-open') || root.classList.contains('chrome-gesture');
     this.finger = null;
+    if (shouldDropThrowForChrome({ chromeGesture, dx, dy })) {
+      this.drag = null;
+      this.moveX = 0;
+      this.moveY = 0;
+      return;
+    }
     const at = this.pointFromClient(touch.clientX, touch.clientY);
     this.trackDrag(at);
     this.releaseDrag(at);

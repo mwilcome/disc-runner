@@ -6,8 +6,8 @@ import {
   shouldKeepSafariScroll,
   shouldOfferChromeCollapse,
   shouldRequestFullscreen,
-  dockSwipe,
-  swipeUp,
+  safariOwnsSwipe,
+  shouldDropThrowForChrome,
   visualFrame,
 } from './viewport';
 
@@ -45,11 +45,12 @@ describe('landscape shell', () => {
     expect(shouldKeepSafariScroll({ iphone: true, standalone: false, width: 800, height: 340 })).toBe(true);
     expect(shouldKeepSafariScroll({ iphone: true, width: 340, height: 800 })).toBe(false);
     expect(shouldOfferChromeCollapse({ android: true, standalone: false, fullscreen: false })).toBe(true);
-    expect(swipeUp(10, -80)).toBe(true);
-    expect(swipeUp(-80, -10)).toBe(false);
-    expect(dockSwipe(-120, -8)).toBe(false);
-    expect(dockSwipe(4, -70)).toBe(true);
-    expect(dockSwipe(-90, -20)).toBe(false);
+    expect(safariOwnsSwipe({ chromeOpen: true })).toBe(true);
+    expect(safariOwnsSwipe({ gesturing: true })).toBe(true);
+    expect(safariOwnsSwipe({})).toBe(false);
+    expect(shouldDropThrowForChrome({ chromeGesture: true, dx: 4, dy: -70 })).toBe(true);
+    expect(shouldDropThrowForChrome({ chromeGesture: true, dx: -120, dy: -8 })).toBe(false);
+    expect(shouldDropThrowForChrome({ chromeGesture: false, dx: 4, dy: -70 })).toBe(false);
     expect(
       safariChromeOpen({
         standalone: true,
