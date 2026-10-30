@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { EZ_RIGHT_START, YARD } from './field';
 import { createMatch, launch, spot, step, type FrameInput, type Match } from './match';
 import { flightFromPlan, flightTo } from './throw';
 
-const idle: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false };
+const idle: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false, aiming: false };
 
 function fresh(): Match {
   return createMatch({
@@ -66,6 +67,27 @@ describe('slingshot and catch', () => {
     expect(match.message).not.toBe('INCOMPLETE');
   });
 
+  it('completes when the landing mark sits on the receiver body', () => {
+    const match = fresh();
+    const holder = match.disc.holder;
+    const thrower = match.players[holder]!;
+    const spotAt = { x: thrower.x + 220, y: thrower.y };
+    park(match, [holder, 0]);
+    const receiver = match.players[0]!;
+    receiver.route = 'thrower';
+    receiver.x = spotAt.x;
+    receiver.y = spotAt.y + 40;
+    receiver.homeX = receiver.x;
+    receiver.homeY = receiver.y;
+    launch(match, flightTo({ x: thrower.x, y: thrower.y }, spotAt, 'floater', 0), holder);
+    for (let i = 0; i < 140; i += 1) {
+      step(match, 1 / 60, idle);
+      if (match.disc.mode === 'held') break;
+    }
+    expect(match.disc.holder).toBe(0);
+    expect(match.message).not.toBe('INCOMPLETE');
+  });
+
   it('misses a receiver standing outside the catch radius', () => {
     const match = fresh();
     const holder = match.disc.holder;
@@ -75,7 +97,7 @@ describe('slingshot and catch', () => {
     const receiver = match.players[0]!;
     receiver.route = 'thrower';
     receiver.x = spot.x;
-    receiver.y = spot.y + 90;
+    receiver.y = spot.y + 140;
     receiver.homeX = receiver.x;
     receiver.homeY = receiver.y;
     launch(match, flightTo({ x: thrower.x, y: thrower.y }, spot, 'floater', 0), holder);
@@ -84,24 +106,88 @@ describe('slingshot and catch', () => {
   });
 });
 
+describe('field length', () => {
+  it('starts more than forty yards from the far goal line', () => {
+    const match = fresh();
+    const thrower = match.players[match.disc.holder]!;
+    expect(EZ_RIGHT_START - thrower.x).toBeGreaterThan(40 * YARD);
+  });
+});
+
+describe('end zone', () => {
+  it('scores when the disc is caught in the end zone', () => {
+    const match = fresh();
+    const holder = match.disc.holder;
+    const thrower = match.players[holder]!;
+    const spotAt = { x: EZ_RIGHT_START + 60, y: thrower.y };
+    park(match, [holder, 0]);
+    const receiver = match.players[0]!;
+    receiver.route = 'thrower';
+    receiver.x = spotAt.x;
+    receiver.y = spotAt.y;
+    receiver.homeX = spotAt.x;
+    receiver.homeY = spotAt.y;
+    launch(match, flightTo({ x: thrower.x, y: thrower.y }, spotAt, 'floater', 0), holder);
+    for (let i = 0; i < 140; i += 1) {
+      step(match, 1 / 60, idle);
+      if (match.message === 'GOAL') break;
+    }
+    expect(match.message).toBe('GOAL');
+    expect(match.score[0]).toBe(1);
+  });
+
+  it('does not score a catch short of the goal line', () => {
+    const match = fresh();
+    const holder = match.disc.holder;
+    const thrower = match.players[holder]!;
+    const spotAt = { x: EZ_RIGHT_START - 90, y: thrower.y };
+    park(match, [holder, 0]);
+    const receiver = match.players[0]!;
+    receiver.route = 'thrower';
+    receiver.x = spotAt.x;
+    receiver.y = spotAt.y;
+    receiver.homeX = spotAt.x;
+    receiver.homeY = spotAt.y;
+    launch(match, flightTo({ x: thrower.x, y: thrower.y }, spotAt, 'floater', 0), holder);
+    for (let i = 0; i < 140; i += 1) {
+      step(match, 1 / 60, idle);
+      if (match.disc.mode === 'held') break;
+    }
+    expect(match.message).toBe('CATCH');
+    expect(match.score[0]).toBe(0);
+  });
+});
+
 describe('roles and coverage', () => {
   it('does not let the thrower run or switch on offense', () => {
     const match = fresh();
     const holder = match.disc.holder;
     const x = match.players[holder]!.x;
-    step(match, 0.2, { moveX: 1, moveY: 0, flight: null, switchTo: 0, lunge: false });
+    step(match, 0.2, { moveX: 1, moveY: 0, flight: null, switchTo: 0, lunge: false, aiming: false });
     expect(match.control).toBe(holder);
     expect(match.players[holder]!.x).toBeCloseTo(x, 0);
+  });
+
+  it('holds the stall while the throw is being aimed', () => {
+    const match = fresh();
+    for (let i = 0; i < 70; i += 1) step(match, 1 / 60, idle);
+    expect(match.phase).toBe('live');
+    const stall = match.stall;
+    step(match, 1.2, { ...idle, aiming: true });
+    expect(match.stall).toBeCloseTo(stall, 5);
+    expect(match.disc.mode).toBe('held');
   });
 
   it('moves receivers on their routes while the thrower is planted', () => {
     const match = fresh();
     const deep = match.players[5]!;
     const before = deep.x;
+    const lane = deep.y;
     for (let i = 0; i < 40; i += 1) step(match, 1 / 60, idle);
     expect(match.phase).toBe('ready');
     expect(match.clock).toBe(60);
     expect(deep.x).toBeGreaterThan(before + 20);
+    expect(Math.abs(deep.y - lane)).toBeLessThan(40);
   });
 
   it('switches the controlled runner on defense', () => {
@@ -110,7 +196,7 @@ describe('roles and coverage', () => {
     spot(match, 2000);
     expect(match.control).toBe(3);
     const before = match.players[1]!.x;
-    step(match, 0.35, { moveX: 1, moveY: 0, flight: null, switchTo: 1, lunge: false });
+    step(match, 0.35, { moveX: 1, moveY: 0, flight: null, switchTo: 1, lunge: false, aiming: false });
     expect(match.control).toBe(1);
     expect(match.players[1]!.x).toBeGreaterThan(before + 5);
   });

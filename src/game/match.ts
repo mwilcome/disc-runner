@@ -1,4 +1,4 @@
-import { EZ_LEFT_END, EZ_RIGHT_START, MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, clamp, isEndZone, type Vec } from './field';
+import { EZ_LEFT_END, EZ_RIGHT_START, MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, brickX, clamp, isEndZone, type Vec } from './field';
 import { flightTime, flightTo, routePoint, routeSpeed, sampleFlight, type Flight, type RouteId, type ThrowKind } from './throw';
 
 export interface Athlete {
@@ -72,9 +72,10 @@ export interface FrameInput {
   flight: Flight | null;
   switchTo: number | null;
   lunge: boolean;
+  aiming: boolean;
 }
 
-export const IDLE: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false };
+export const IDLE: FrameInput = { moveX: 0, moveY: 0, flight: null, switchTo: null, lunge: false, aiming: false };
 
 /** Staggered depths so a snap reads as a play, not a drill line. */
 const FORM: { x: number; y: number; route: RouteId }[] = [
@@ -288,7 +289,7 @@ export function step(match: Match, dt: number, input: FrameInput): void {
   else maybeAiThrow(match);
   if (match.disc.mode === 'held') {
     syncHeld(match);
-    if (match.phase !== 'live') return;
+    if (match.phase !== 'live' || input.aiming) return;
     match.stall -= dt;
     if (match.stall <= 0) {
       turnover(match, 'STALL');
@@ -323,30 +324,27 @@ function movePeople(match: Match, dt: number, input: FrameInput): void {
     }
     if (controlled) {
       const sp = moverSpeed(match, p.team);
+      const band = 78;
       p.vx = input.moveX * sp;
       p.vy = input.moveY * sp;
       p.x += p.vx * dt;
-      p.y += p.vy * dt;
+      const nextY = p.y + p.vy * dt;
+      p.y = clamp(nextY, p.homeY - band, p.homeY + band);
       p.y = clamp(p.y, SIDELINE_TOP + 8, SIDELINE_BOT - 8);
       continue;
     }
     if (offense) {
-      const dest = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, routeClock(match.routeT), routeSpeed(level));
-      dest.y = clamp(dest.y + Math.sin(match.routeT * 4 + i) * 14, SIDELINE_TOP + 28, SIDELINE_BOT - 28);
-      steer(p, dest.x, dest.y, routeSpeed(level), dt);
+      const raw = routePoint({ x: p.homeX, y: p.homeY }, p.route, dir, Math.min(match.routeT, 1.2), routeSpeed(level));
+      const destY = clamp(raw.y, p.homeY - LANE, p.homeY + LANE);
+      steer(p, raw.x, destY, routeSpeed(level) * 0.92, dt);
       continue;
     }
-    const gx = p.homeX + Math.sin(match.routeT * 0.9 + i) * 26;
-    const gy = p.homeY + Math.cos(match.routeT * 0.7 + i * 0.6) * 18;
-    steer(p, gx, clamp(gy, SIDELINE_TOP + 36, SIDELINE_BOT - 36), 70, dt);
+    const shade = dir * Math.min(match.routeT, 1.2) * 80;
+    steer(p, p.homeX + shade, p.homeY, 110, dt);
   }
 }
 
-function routeClock(t: number): number {
-  const span = 1.8;
-  const phase = t % (span * 2);
-  return phase <= span ? phase : span * 2 - phase;
-}
+const LANE = 36;
 
 function steer(p: Athlete, x: number, y: number, speed: number, dt: number): void {
   const dx = x - p.x;
@@ -422,8 +420,8 @@ function stepFlight(match: Match, dt: number): void {
   }
   const descending = flight.hang > 0 && match.disc.age / flight.hang >= 0.55;
   if (!descending) return;
-  const off = nearest(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
-  const def = nearest(match, sample, (p) => p.team !== match.poss);
+  const off = nearestBody(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
+  const def = nearestBody(match, sample, (p) => p.team !== match.poss);
   const over = sample.z > (match.disc.kind === 'floater' ? 1.05 : 0.7);
   const offIn = off.index >= 0 && off.dist <= match.disc.catchRadius && sample.z <= 1.15;
   const defIn = !over && def.index >= 0 && def.dist <= 24;
@@ -451,7 +449,7 @@ function catchDisc(match: Match, index: number, x: number): void {
   match.stall = 8;
   match.liveT = 0;
   match.aiWait = 0;
-  if (isEndZone(x, dir) || isEndZone(catcher.x, dir)) {
+  if (isEndZone(x, dir)) {
     celebrate(match, 'goal', 'GOAL');
     return;
   }
@@ -474,7 +472,8 @@ function catchDisc(match: Match, index: number, x: number): void {
   celebrate(match, 'catch', 'CATCH');
 }
 
-function nearest(
+/** Distance to the torso. The sprite stands on its feet, so a disc on the body is not at p.y. */
+function nearestBody(
   match: Match,
   at: Vec,
   pred: (p: Athlete, i: number) => boolean,
@@ -483,7 +482,7 @@ function nearest(
   let dist = Infinity;
   match.players.forEach((p, i) => {
     if (!pred(p, i)) return;
-    const d = Math.hypot(p.x - at.x, p.y - at.y);
+    const d = Math.hypot(p.x - at.x, p.y - 36 - at.y);
     if (d < dist) {
       dist = d;
       index = i;
@@ -516,7 +515,7 @@ function finishCelebrate(match: Match): void {
     match.clock = match.halfLength;
     match.userAttack = match.userAttack === 1 ? -1 : 1;
     match.poss = 1;
-    spot(match, attackOf(match) === 1 ? 1500 : 2800);
+    spot(match, brickX(attackOf(match)));
     return;
   }
   if (match.celebrate === 'catch') {
@@ -532,7 +531,7 @@ function finishCelebrate(match: Match): void {
     const landed = match.markX;
     match.poss = match.poss === 0 ? 1 : 0;
     const dir = attackOf(match);
-    const restart = match.celebrate === 'goal' ? (dir > 0 ? 1500 : 2700) : landed;
+    const restart = match.celebrate === 'goal' ? brickX(dir) : landed;
     spot(match, placeSpot(dir, restart));
   }
 }

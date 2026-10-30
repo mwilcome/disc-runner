@@ -24,17 +24,29 @@ const game = new Phaser.Game({
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   input: {
+    activePointers: 3,
     mouse: {
-      preventDefaultDown: true,
-      preventDefaultUp: true,
-      preventDefaultMove: true,
       preventDefaultWheel: true,
     },
-    touch: { capture: true },
+    touch: { capture: false },
   },
   render: { antialias: false, pixelArt: true, roundPixels: true },
   scene: [TitleScene, HubScene, ShopScene, MatchScene, ResultScene],
 });
+
+const parent = document.getElementById('app');
+if (parent && 'ResizeObserver' in window) {
+  let queued = false;
+  const observer = new ResizeObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      game.scale.refresh();
+    });
+  });
+  observer.observe(parent);
+}
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

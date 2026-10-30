@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { blip } from '../audio';
 import { athleteKey, buildTextures, drawBit, paintPitch, textWidth } from '../game/art';
 import { SQUADS, loadCareer, opponentIndex } from '../game/career';
-import { VIEW_H, VIEW_W, WORLD_W } from '../game/field';
+import { EZ_LEFT_END, EZ_RIGHT_START, VIEW_H, VIEW_W, WORLD_W } from '../game/field';
 import {
   IDLE,
   attackOf,
@@ -15,6 +15,8 @@ import {
   type Match,
 } from '../game/match';
 import { MIN_PULL, dragToThrow, flightFromPlan, landingOf, releaseSpeed, sampleFlight, type DragSample, type Flight } from '../game/throw';
+import { clientToGame } from '../shell/touch';
+import { shouldDropThrowForChrome } from '../shell/viewport';
 
 interface Drag {
   x0: number;
@@ -48,6 +50,9 @@ export class MatchScene extends Phaser.Scene {
   private lunge = false;
   private ended = false;
   private born = 0;
+  private finger: number | null = null;
+  private fingerX = 0;
+  private fingerY = 0;
   private keys?: {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
@@ -112,11 +117,81 @@ export class MatchScene extends Phaser.Scene {
         l: kb.addKey(Phaser.Input.Keyboard.KeyCodes.L),
       };
     }
+    this.input.addPointer(2);
     this.input.mouse?.disableContextMenu();
     this.born = this.time.now;
     this.input.on('pointerdown', this.onDown, this);
     this.input.on('pointermove', this.onMove, this);
     this.input.on('pointerup', this.onUp, this);
+    this.bindFieldTouch();
+  }
+
+  private bindFieldTouch(): void {
+    const doc = this.game.canvas.ownerDocument;
+    const onStart = (event: TouchEvent) => this.onFieldStart(event);
+    const onMove = (event: TouchEvent) => this.onFieldMove(event);
+    const onEnd = (event: TouchEvent) => this.onFieldEnd(event);
+    doc.addEventListener('touchstart', onStart, { passive: false });
+    doc.addEventListener('touchmove', onMove, { passive: false });
+    doc.addEventListener('touchend', onEnd, { passive: false });
+    doc.addEventListener('touchcancel', onEnd, { passive: false });
+    this.events.once('shutdown', () => {
+      doc.removeEventListener('touchstart', onStart);
+      doc.removeEventListener('touchmove', onMove);
+      doc.removeEventListener('touchend', onEnd);
+      doc.removeEventListener('touchcancel', onEnd);
+      this.finger = null;
+      this.drag = null;
+    });
+  }
+
+  private onGameSurface(event: TouchEvent): boolean {
+    const app = this.game.canvas.parentElement;
+    const target = event.target;
+    return target instanceof Node && !!app && app.contains(target);
+  }
+
+  private pointFromClient(clientX: number, clientY: number): { x: number; y: number } {
+    const cam = this.cameras.main;
+    return clientToGame(clientX, clientY, this.game.canvas.getBoundingClientRect(), VIEW_W, VIEW_H, cam.scrollX, cam.scrollY);
+  }
+
+  private onFieldStart(event: TouchEvent): void {
+    if (this.finger != null || !this.onGameSurface(event)) return;
+    if (this.time.now - this.born < 400) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    this.finger = touch.identifier;
+    this.fingerX = touch.clientX;
+    this.fingerY = touch.clientY;
+    this.beginDrag(this.pointFromClient(touch.clientX, touch.clientY));
+  }
+
+  private onFieldMove(event: TouchEvent): void {
+    if (this.finger == null) return;
+    const touch = Array.from(event.touches).find((item) => item.identifier === this.finger);
+    if (!touch) return;
+    this.trackDrag(this.pointFromClient(touch.clientX, touch.clientY));
+  }
+
+  private onFieldEnd(event: TouchEvent): void {
+    if (this.finger == null) return;
+    const touch = Array.from(event.changedTouches).find((item) => item.identifier === this.finger);
+    if (!touch) return;
+    const dx = touch.clientX - this.fingerX;
+    const dy = touch.clientY - this.fingerY;
+    const root = this.game.canvas.ownerDocument.documentElement;
+    const chromeGesture = root.classList.contains('chrome-open') || root.classList.contains('chrome-gesture');
+    this.finger = null;
+    if (shouldDropThrowForChrome({ chromeGesture, dx, dy })) {
+      this.drag = null;
+      this.moveX = 0;
+      this.moveY = 0;
+      return;
+    }
+    const at = this.pointFromClient(touch.clientX, touch.clientY);
+    this.trackDrag(at);
+    this.releaseDrag(at);
   }
 
   update(time: number, delta: number): void {
@@ -167,17 +242,28 @@ export class MatchScene extends Phaser.Scene {
 
   private frameCamera(): number {
     const disc = this.match.disc.x;
-    let sum = disc;
-    let n = 1;
-    for (const p of this.match.players) {
-      if (Math.abs(p.x - disc) < 720) {
-        sum += p.x;
-        n += 1;
+    const dir = attackOf(this.match);
+    const goal = dir > 0 ? EZ_RIGHT_START : EZ_LEFT_END;
+    const nearGoal = dir > 0 ? disc >= goal - 560 : disc <= goal + 560;
+    const showGoal = this.match.message === 'GOAL' || nearGoal;
+    let target: number;
+    if (showGoal) {
+      const lineAt = dir > 0 ? 0.68 : 0.32;
+      target = goal - VIEW_W * lineAt;
+    } else {
+      let sum = disc;
+      let n = 1;
+      for (const p of this.match.players) {
+        if (Math.abs(p.x - disc) < 520) {
+          sum += p.x;
+          n += 1;
+        }
       }
+      const focus = disc * 0.72 + sum / n * 0.28;
+      const bias = dir > 0 ? 0.4 : 0.6;
+      target = focus - VIEW_W * bias;
     }
-    const mid = sum / n;
-    const focus = disc * 0.62 + mid * 0.38;
-    const target = Phaser.Math.Clamp(focus - VIEW_W * 0.48, 0, WORLD_W - VIEW_W);
+    target = Phaser.Math.Clamp(target, 0, WORLD_W - VIEW_W);
     const gap = target - this.cameras.main.scrollX;
     return this.cameras.main.scrollX + (Math.abs(gap) > 640 ? gap : gap * 0.2);
   }
@@ -203,6 +289,7 @@ export class MatchScene extends Phaser.Scene {
       flight: null,
       switchTo: null,
       lunge: offense ? false : this.lunge,
+      aiming: offense && this.drag !== null,
     };
   }
 
@@ -214,16 +301,13 @@ export class MatchScene extends Phaser.Scene {
     return { x: pointer.worldX, y: pointer.worldY };
   }
 
-  private onDown(pointer: Phaser.Input.Pointer): void {
-    if (this.time.now - this.born < 400) return;
+  private beginDrag(p: { x: number; y: number }): void {
     const now = this.time.now;
-    const p = this.at(pointer);
     this.drag = { x0: p.x, y0: p.y, x: p.x, y: p.y, t0: now, samples: [{ t: now, x: p.x, y: p.y }] };
   }
 
-  private onMove(pointer: Phaser.Input.Pointer): void {
+  private trackDrag(p: { x: number; y: number }): void {
     if (!this.drag) return;
-    const p = this.at(pointer);
     this.drag.x = p.x;
     this.drag.y = p.y;
     this.drag.samples.push({ t: this.time.now, x: p.x, y: p.y });
@@ -240,13 +324,12 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
-  private onUp(pointer: Phaser.Input.Pointer): void {
+  private releaseDrag(at: { x: number; y: number }): void {
     if (!this.drag) return;
     const drag = this.drag;
     this.drag = null;
-    const up = this.at(pointer);
-    const dx = drag.x - drag.x0;
-    const dy = drag.y - drag.y0;
+    const dx = at.x - drag.x0;
+    const dy = at.y - drag.y0;
     const len = Math.hypot(dx, dy);
     this.moveX = 0;
     this.moveY = 0;
@@ -265,7 +348,7 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (this.match.poss !== 1 || len > 48) return;
-    const hit = this.nearestUser(up.x, up.y);
+    const hit = this.nearestUser(at.x, at.y);
     if (hit < 0) return;
     if (hit === this.match.control && lungeReady(this.match)) {
       this.lunge = true;
@@ -273,6 +356,23 @@ export class MatchScene extends Phaser.Scene {
       return;
     }
     if (hit !== this.match.control) step(this.match, 0, { ...IDLE, switchTo: hit });
+  }
+
+  private onDown(pointer: Phaser.Input.Pointer): void {
+    if (pointer.wasTouch || this.time.now - this.born < 400) return;
+    this.beginDrag(this.at(pointer));
+  }
+
+  private onMove(pointer: Phaser.Input.Pointer): void {
+    if (pointer.wasTouch) return;
+    this.trackDrag(this.at(pointer));
+  }
+
+  private onUp(pointer: Phaser.Input.Pointer): void {
+    if (pointer.wasTouch) return;
+    const at = this.at(pointer);
+    this.trackDrag(at);
+    this.releaseDrag(at);
   }
 
   private nearestUser(x: number, y: number): number {
@@ -301,11 +401,13 @@ export class MatchScene extends Phaser.Scene {
       if (p.lunge > 0) pose = 'dive';
       else if (i === this.catchWho && time < this.catchUntil) pose = 'catch';
       else if (hasDisc) pose = 'throw';
-      else if (moving(i)) pose = Math.floor(time / 90) % 2 === 0 ? 'run0' : 'run1';
+      else if (moving(i)) pose = Math.floor(time / 140) % 2 === 0 ? 'run0' : 'run1';
       sprite.setTexture(athleteKey(p.squad, pose, p.hair));
-      sprite.setPosition(Math.round(p.x), Math.round(p.y));
+      sprite.setPosition(p.x, p.y);
       sprite.setDepth(10 + p.y / 1000);
-      const faceLeft = Math.abs(p.vx) > 12 ? p.vx < 0 : p.team === this.match.poss ? attackOf(this.match) < 0 : attackOf(this.match) > 0;
+      const faceLeft = i === this.match.control && Math.abs(p.vx) > 20
+        ? p.vx < 0
+        : attackOf(this.match) < 0;
       sprite.setFlipX(faceLeft);
       const base = i === this.match.control ? 3.35 : 3.15;
       const pop = i === this.catchWho && time < this.catchUntil ? 1 + Math.sin((this.catchUntil - time) / 80) * 0.08 : 1;
@@ -318,24 +420,23 @@ export class MatchScene extends Phaser.Scene {
       }
     });
     const flying = this.match.disc.mode === 'flight';
-    const lift = this.match.disc.z * 58;
-    const rate = this.match.disc.kind === 'flick' ? 17 : 8.5;
-    const wobble = flying ? 0.65 + 0.35 * Math.abs(Math.sin(this.match.disc.age * rate)) : 0.8;
-    const spin = flying ? this.match.disc.age * (this.match.disc.kind === 'flick' ? 420 : 260) : attackOf(this.match) > 0 ? 16 : 164;
+    const lift = this.match.disc.z * 64;
+    const spin = this.match.disc.age * (this.match.disc.kind === 'flick' ? 520 : 280);
     this.trail.unshift({ x: this.match.disc.x, y: this.match.disc.y - lift });
-    this.trail.length = 5;
+    this.trail.length = 6;
     this.ghosts.forEach((ghost, i) => {
       const bit = this.trail[i + 1];
       const show = flying && bit;
       ghost.setVisible(!!show);
       if (!show || !bit) return;
       ghost.setPosition(bit.x, bit.y);
-      ghost.setAngle(spin - (i + 1) * 36);
-      ghost.setScale(3.1, 1.05 + wobble * 0.45);
+      ghost.setAngle(spin);
+      ghost.setScale(3.2, 1.45);
+      ghost.setAlpha(0.22 - i * 0.03);
     });
     this.disc.setPosition(this.match.disc.x, this.match.disc.y - lift);
-    this.disc.setAngle(spin);
-    this.disc.setScale(3.6, flying ? 1.25 + wobble * 0.7 : 1.45);
+    this.disc.setAngle(flying ? spin : attackOf(this.match) > 0 ? 12 : 168);
+    this.disc.setScale(3.5, 1.5);
     this.discShadow.setPosition(this.match.disc.x, this.match.disc.y + 4);
     this.discShadow.setAlpha(flying ? 0.45 * (1 - Math.min(this.match.disc.z, 1.6) / 2.2) : 0.4);
     this.discShadow.setScale(3.4 + this.match.disc.z * 1.1, 1.3);
@@ -425,7 +526,7 @@ export class MatchScene extends Phaser.Scene {
     }
     const land = landingOf(flight);
     g.lineStyle(5, 0xffe14a, 1);
-    g.strokeCircle(land.x, land.y, 26);
+    g.strokeCircle(land.x, land.y, flight.catchRadius);
     g.fillStyle(0xffe14a, 1);
     g.fillCircle(land.x, land.y, 6);
     g.lineBetween(land.x - 14, land.y, land.x + 14, land.y);
