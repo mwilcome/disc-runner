@@ -359,10 +359,10 @@ export function paintPitch(g: Phaser.GameObjects.Graphics): void {
     if (major) {
       const label = String(Math.min(yards, 70 - yards));
       const nx = x - textWidth(label, 6) / 2;
-      drawBit(g, label, nx + 2, SIDELINE_TOP + 28, 0x0c2414, 6, 0.4);
-      drawBit(g, label, nx, SIDELINE_TOP + 26, 0xf7f4ea, 6, 0.48);
-      drawBit(g, label, nx + 2, SIDELINE_BOT - 78, 0x0c2414, 6, 0.4);
-      drawBit(g, label, nx, SIDELINE_BOT - 80, 0xf7f4ea, 6, 0.48);
+      drawBit(g, label, nx + 2, SIDELINE_TOP + 28, 0x0c2414, 6, 0.85);
+      drawBit(g, label, nx, SIDELINE_TOP + 26, 0xf7f4ea, 6, 1);
+      drawBit(g, label, nx + 2, SIDELINE_BOT - 78, 0x0c2414, 6, 0.85);
+      drawBit(g, label, nx, SIDELINE_BOT - 80, 0xf7f4ea, 6, 1);
     }
   }
   paintMidfieldMark(g, EZ_LEFT_END + 35 * YARD, midY);

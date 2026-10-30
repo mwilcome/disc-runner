@@ -114,7 +114,7 @@ export function flightTo(origin: Vec, target: Vec, kind: ThrowKind, catchLevel: 
   const dist = Math.hypot(dx, dy) || 1;
   const time = flightTime(kind);
   const hang = time / (kind === 'flick' ? 0.8 : 0.64);
-  const radius = (kind === 'flick' ? 22 : 26) * (1 + 0.15 * catchLevel);
+  const radius = (kind === 'flick' ? 40 : 52) * (1 + 0.15 * catchLevel);
   return {
     origin: { x: origin.x, y: origin.y },
     aim: { x: dx / dist, y: dy / dist },
@@ -137,7 +137,7 @@ export function flightFromPlan(origin: Vec, plan: ThrowPlan, catchLevel: number)
     hang,
     maxZ: plan.kind === 'flick' ? 0.58 : 1.7,
     kind: plan.kind,
-    catchRadius: (plan.kind === 'flick' ? 22 : 26) * (1 + 0.15 * catchLevel),
+    catchRadius: (plan.kind === 'flick' ? 40 : 52) * (1 + 0.15 * catchLevel),
   };
 }
 

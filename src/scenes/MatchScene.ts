@@ -526,7 +526,7 @@ export class MatchScene extends Phaser.Scene {
     }
     const land = landingOf(flight);
     g.lineStyle(5, 0xffe14a, 1);
-    g.strokeCircle(land.x, land.y, 26);
+    g.strokeCircle(land.x, land.y, flight.catchRadius);
     g.fillStyle(0xffe14a, 1);
     g.fillCircle(land.x, land.y, 6);
     g.lineBetween(land.x - 14, land.y, land.x + 14, land.y);

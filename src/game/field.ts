@@ -7,9 +7,11 @@ export const VIEW_W = 960;
 export const VIEW_H = 540;
 
 export const PITCH_LEFT = 100;
-export const EZ_DEPTH = 520;
 export const YARD = 40;
+/** Seventy yards between the goal lines, the usual ultimate length. */
 export const PLAY_LEN = 70 * YARD;
+/** Twenty-yard end zones, one at each end. */
+export const EZ_DEPTH = 20 * YARD;
 export const EZ_LEFT_END = PITCH_LEFT + EZ_DEPTH;
 export const EZ_RIGHT_START = EZ_LEFT_END + PLAY_LEN;
 export const PITCH_RIGHT = EZ_RIGHT_START + EZ_DEPTH;
@@ -19,8 +21,12 @@ export const SIDELINE_TOP = 82;
 export const SIDELINE_BOT = 468;
 export const MID_Y = (SIDELINE_TOP + SIDELINE_BOT) / 2;
 
-/** Opening spot sits in the attacking red zone so one floater can finish. */
-export const OPEN_X = 3000;
+/** Own 20, attacking the far goal. A score takes more than one throw. */
+export function brickX(dir: 1 | -1): number {
+  return dir > 0 ? EZ_LEFT_END + 20 * YARD : EZ_RIGHT_START - 20 * YARD;
+}
+
+export const OPEN_X = brickX(1);
 
 export function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));

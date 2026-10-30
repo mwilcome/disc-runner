@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EZ_RIGHT_START } from './field';
+import { EZ_RIGHT_START, YARD } from './field';
 import { createMatch, launch, spot, step, type FrameInput, type Match } from './match';
 import { flightFromPlan, flightTo } from './throw';
 
@@ -67,6 +67,27 @@ describe('slingshot and catch', () => {
     expect(match.message).not.toBe('INCOMPLETE');
   });
 
+  it('completes when the landing mark sits on the receiver body', () => {
+    const match = fresh();
+    const holder = match.disc.holder;
+    const thrower = match.players[holder]!;
+    const spotAt = { x: thrower.x + 220, y: thrower.y };
+    park(match, [holder, 0]);
+    const receiver = match.players[0]!;
+    receiver.route = 'thrower';
+    receiver.x = spotAt.x;
+    receiver.y = spotAt.y + 40;
+    receiver.homeX = receiver.x;
+    receiver.homeY = receiver.y;
+    launch(match, flightTo({ x: thrower.x, y: thrower.y }, spotAt, 'floater', 0), holder);
+    for (let i = 0; i < 140; i += 1) {
+      step(match, 1 / 60, idle);
+      if (match.disc.mode === 'held') break;
+    }
+    expect(match.disc.holder).toBe(0);
+    expect(match.message).not.toBe('INCOMPLETE');
+  });
+
   it('misses a receiver standing outside the catch radius', () => {
     const match = fresh();
     const holder = match.disc.holder;
@@ -76,12 +97,20 @@ describe('slingshot and catch', () => {
     const receiver = match.players[0]!;
     receiver.route = 'thrower';
     receiver.x = spot.x;
-    receiver.y = spot.y + 90;
+    receiver.y = spot.y + 140;
     receiver.homeX = receiver.x;
     receiver.homeY = receiver.y;
     launch(match, flightTo({ x: thrower.x, y: thrower.y }, spot, 'floater', 0), holder);
     for (let i = 0; i < 130; i += 1) step(match, 1 / 60, idle);
     expect(match.message).toBe('INCOMPLETE');
+  });
+});
+
+describe('field length', () => {
+  it('starts more than forty yards from the far goal line', () => {
+    const match = fresh();
+    const thrower = match.players[match.disc.holder]!;
+    expect(EZ_RIGHT_START - thrower.x).toBeGreaterThan(40 * YARD);
   });
 });
 

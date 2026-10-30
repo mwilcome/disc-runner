@@ -1,4 +1,4 @@
-import { EZ_LEFT_END, EZ_RIGHT_START, MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, clamp, isEndZone, type Vec } from './field';
+import { EZ_LEFT_END, EZ_RIGHT_START, MID_Y, OPEN_X, PITCH_LEFT, PITCH_RIGHT, SIDELINE_BOT, SIDELINE_TOP, brickX, clamp, isEndZone, type Vec } from './field';
 import { flightTime, flightTo, routePoint, routeSpeed, sampleFlight, type Flight, type RouteId, type ThrowKind } from './throw';
 
 export interface Athlete {
@@ -420,8 +420,8 @@ function stepFlight(match: Match, dt: number): void {
   }
   const descending = flight.hang > 0 && match.disc.age / flight.hang >= 0.55;
   if (!descending) return;
-  const off = nearest(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
-  const def = nearest(match, sample, (p) => p.team !== match.poss);
+  const off = nearestBody(match, sample, (p, i) => p.team === match.poss && i !== match.disc.thrownBy);
+  const def = nearestBody(match, sample, (p) => p.team !== match.poss);
   const over = sample.z > (match.disc.kind === 'floater' ? 1.05 : 0.7);
   const offIn = off.index >= 0 && off.dist <= match.disc.catchRadius && sample.z <= 1.15;
   const defIn = !over && def.index >= 0 && def.dist <= 24;
@@ -472,7 +472,8 @@ function catchDisc(match: Match, index: number, x: number): void {
   celebrate(match, 'catch', 'CATCH');
 }
 
-function nearest(
+/** Distance to the torso. The sprite stands on its feet, so a disc on the body is not at p.y. */
+function nearestBody(
   match: Match,
   at: Vec,
   pred: (p: Athlete, i: number) => boolean,
@@ -481,7 +482,7 @@ function nearest(
   let dist = Infinity;
   match.players.forEach((p, i) => {
     if (!pred(p, i)) return;
-    const d = Math.hypot(p.x - at.x, p.y - at.y);
+    const d = Math.hypot(p.x - at.x, p.y - 36 - at.y);
     if (d < dist) {
       dist = d;
       index = i;
@@ -514,7 +515,7 @@ function finishCelebrate(match: Match): void {
     match.clock = match.halfLength;
     match.userAttack = match.userAttack === 1 ? -1 : 1;
     match.poss = 1;
-    spot(match, attackOf(match) === 1 ? 1500 : 2800);
+    spot(match, brickX(attackOf(match)));
     return;
   }
   if (match.celebrate === 'catch') {
@@ -530,7 +531,7 @@ function finishCelebrate(match: Match): void {
     const landed = match.markX;
     match.poss = match.poss === 0 ? 1 : 0;
     const dir = attackOf(match);
-    const restart = match.celebrate === 'goal' ? (dir > 0 ? 1500 : 2700) : landed;
+    const restart = match.celebrate === 'goal' ? brickX(dir) : landed;
     spot(match, placeSpot(dir, restart));
   }
 }
